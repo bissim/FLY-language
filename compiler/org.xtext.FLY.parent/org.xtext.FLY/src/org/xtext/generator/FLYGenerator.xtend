@@ -487,7 +487,7 @@ class FLYGenerator extends AbstractGenerator {
 							@Override
 							public Object call() throws Exception{
 								Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«env_name»_deploy.sh");
-								ProcessBuilder __processBuilder_deploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«environment»_deploy.sh «user» «call.target.name» "+__id_execution);
+								ProcessBuilder __processBuilder_deploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«env_name»_deploy.sh «user» «call.target.name» "+__id_execution);
 								__processBuilder_deploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
 								Map<String, String> __env_deploy_«call.target.name» = __processBuilder_deploy_«call.target.name».environment();
 								__processBuilder_deploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
