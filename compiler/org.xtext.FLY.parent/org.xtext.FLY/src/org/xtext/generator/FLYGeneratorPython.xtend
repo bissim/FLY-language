@@ -1489,17 +1489,17 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	def CharSequence compileDockerCompose(Resource resource)'''
 	docker network create -d bridge --subnet 192.168.0.0/24 --gateway 192.168.0.1 mynet
-	echo "
-	version: '2.1'
+	echo \
+	"version: '3.7'
 	
 	services:
 	 localstack:
 	   image: localstack/localstack:0.9.6
 	   ports:
-	     - '4567-4593:4567-4593'
+	     - '4563-4599:4563-4599'
 	     - '\${PORT_WEB_UI-8080}:\${PORT_WEB_UI-8080}'
 	   environment:
-	     - SERVICES=\${SERVICES- s3, sqs, lambda, iam, cloud watch, cloud watch logs}
+	     - SERVICES=\${SERVICES- s3, sqs, lambda, iam, cloudwatch, logs}
 	     - DEBUG=\${DEBUG- 1}
 	     - DATA_DIR=\${DATA_DIR- }
 	     - PORT_WEB_UI=\${PORT_WEB_UI- }
@@ -1511,8 +1511,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 	     - LOCALSTACK_HOSTNAME=192.168.0.1
 	   volumes:
 	     - '\${TMPDIR:-/tmp/localstack}:/tmp/localstack'
-	     - '/var/run/docker.sock:/var/run/docker.sock' "> docker-compose.yml
-	     
+	     - '/var/run/docker.sock:/var/run/docker.sock'
+	" > docker-compose.yml
+	
 	docker-compose up
 	'''
 	
