@@ -28,6 +28,7 @@
 *.rar
 **/*.rar
 
+**/.project
 **/.metadata
 **/.settings
 **/bin
