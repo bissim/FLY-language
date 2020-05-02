@@ -1277,40 +1277,39 @@ class FLYGeneratorPython extends AbstractGenerator {
 	'''
 	#!/bin/bash
 	
-	if [ $# -eq 0 ]
-	  then
+	if [[ $# -eq 0 ]]; then
 	    echo "No arguments supplied. ./aws_deploy.sh <user_profile> <function_name> <id_function_execution>"
 	    exit 1
 	fi
 	
 	echo "Checking that aws-cli is installed"
 	which aws
-	if [ $? -eq 0 ]; then
-	      echo "aws-cli is installed, continuing..."
+	if [[ $? -eq 0 ]]; then
+	    echo "aws-cli is installed, continuing..."
 	else
-	      echo "You need aws-cli to deploy this lambda. Google 'aws-cli install'"
-	      exit 1
+	    echo "You need aws-cli to deploy this lambda. Google 'aws-cli install'"
+	    exit 1
 	fi
 	
 	echo "Checking wheter virtualenv is installed"
 	which virtualenv
-	if [ $? -eq 0 ]; then
+	if [[ $? -eq 0 ]]; then
 		echo "virtualenv is installed, continuing..."
 	else
-	     echo "You need to install virtualenv. Google 'virtualenv install'"
-	     exit 1
+	    echo "You need to install virtualenv. Google 'virtualenv install'"
+	    exit 1
 	fi
 	
 	aws configure list --profile dummy_fly_debug
-	if [ $? -eq 0 ]; then
+	if [[ $? -eq 0 ]]; then
 		echo "dummy user found, continuing..."
 	else
-	     echo "creating dummy user..."
-	     aws configure set aws_access_key_id dummy --profile dummy_fly_debug
-	     aws configure set aws_secret_access_key dummy --profile dummy_fly_debug
-	     aws configure set region us-east-1 --profile dummy_fly_debug
-	     aws configure set output json --profile dummy_fly_debug
-	     echo "dummy user created"
+	    echo "creating dummy user..."
+	    aws configure set aws_access_key_id dummy --profile dummy_fly_debug
+	    aws configure set aws_secret_access_key dummy --profile dummy_fly_debug
+	    aws configure set region us-east-1 --profile dummy_fly_debug
+	    aws configure set output json --profile dummy_fly_debug
+	    echo "dummy user created"
 	fi
 	
 	user=$1
@@ -1318,59 +1317,58 @@ class FLYGeneratorPython extends AbstractGenerator {
 	id=$3
 	
 	echo '{
-			"Version": "2012-10-17",
-			"Statement": [
-				{
-					"Effect": "Allow",
-					"Action": [
-						"sqs:DeleteMessage",
-						"sqs:GetQueueAttributes",
-						"sqs:ReceiveMessage",
-						"sqs:SendMessage",
-						"sqs:*"
-					],
-					"Resource": "*" 
-				},
-				{
-				"Effect": "Allow",
-				"Action": [
-					"s3:*"
-				],
-				"Resource": "*" 
-									},
-				{
-					"Effect":"Allow",
-					"Action": [
-						"logs:CreateLogGroup",
-						"logs:CreateLogStream",
-						"logs:PutLogEvents"
-					],
-					"Resource": "*"
-				}
-			]
-		}' > policyDocument.json
+	    "Version": "2012-10-17",
+	    "Statement": [
+	        {
+	            "Effect": "Allow",
+	            "Action": [
+	                "sqs:DeleteMessage",
+	                "sqs:GetQueueAttributes",
+	                "sqs:ReceiveMessage",
+	                "sqs:SendMessage",
+	                "sqs:*"
+	            ],
+	            "Resource": "*" 
+	        },
+	        {
+	            "Effect": "Allow",
+	            "Action": [
+	                "s3:*"
+	            ],
+	            "Resource": "*" 
+	        },
+	        {
+	            "Effect":"Allow",
+	            "Action": [
+	                "logs:CreateLogGroup",
+	                "logs:CreateLogStream",
+	                "logs:PutLogEvents"
+	            ],
+	            "Resource": "*"
+	        }
+	    ]
+	}' > policyDocument.json
 	
 	echo '{
-				"Version": "2012-10-17",
-				"Statement": [
-					{
-						"Effect": "Allow",
-						"Principal": {
-							"Service": "lambda.amazonaws.com"
-						},
-						"Action": "sts:AssumeRole" 
-					}
-				]
-			}' > rolePolicyDocument.json
+	    "Version": "2012-10-17",
+	    "Statement": [
+	        {
+	            "Effect": "Allow",
+	            "Principal": {
+	                "Service": "lambda.amazonaws.com"
+	            },
+	            "Action": "sts:AssumeRole" 
+	        }
+	    ]
+	}' > rolePolicyDocument.json
 	
-	#create role policy
-	
+	# create role policy
 	echo "creation of role lambda-sqs-execution ..."
 	
 	role_arn=$(aws --endpoint-url=http://localhost:4593 iam --profile dummy_fly_debug get-role --role-name lambda-sqs-execution --query 'Role.Arn')
 	
-	if [ $? -eq 255 ]; then 
-		role_arn=$(aws --endpoint-url=http://localhost:4593 iam --profile dummy_fly_debug create-role --role-name lambda-sqs-execution --assume-role-policy-document file://rolePolicyDocument.json --output json --query 'Role.Arn')
+	if [[ -z $role_arn ]]; then
+	    role_arn=$(aws --endpoint-url=http://localhost:4593 iam --profile dummy_fly_debug create-role --role-name lambda-sqs-execution --assume-role-policy-document file://rolePolicyDocument.json --output json --query 'Role.Arn')
 	fi
 	
 	echo "role lambda-sqs-execution created at ARN "$role_arn
@@ -1387,22 +1385,22 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	echo "Checking wheter pip3 is installed"
 	which pip3
-	if [ $? -eq 0 ]; then
+	if [[ $? -eq 0 ]]; then
 		echo "pip3 is installed, continuing..."
 	else
-	     echo "You need to install pip3. Google 'pip3 install'"
-	     exit 1
+	    echo "You need to install pip3. Google 'pip3 install'"
+	    exit 1
 	fi
 	
-	PIPVER="$(pip3 -V | grep -Eo "(\d+\.)+\d+" | grep -Eo "\d+" | head -1)"
-	if [ ${PIPVER} -lt 19 ]; then
+	PIPVER="$(pip3 -V | grep -Po "(\d+\.)+\d+" | grep -Po "\d+" | head -1)"
+	if [[ $PIPVER -lt 19 ]]; then
 		echo "pip version is too old. installing new one"
 		curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
 		python get-pip.py
 	fi
-		
+	
 	pip3 install pytz
-	if [ $? -eq 0 ]; then
+	if [[ $? -eq 0 ]]; then
 	    echo "..."
 	else
 	    echo "pip install pytz failed"
@@ -1411,7 +1409,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	
 	pip3 install ortools
-	if [ $? -eq 0 ]; then
+	if [[ $? -eq 0 ]]; then
 	    echo "..."
 	else
 	    echo "pip install ortools failed"
@@ -1420,8 +1418,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	pip3 install -r ./src-gen/requirements.txt
 	
-			
-	echo ""
+	
+	echo
 	echo "add precompliled libraries"
 	
 	cd venv/lib/python3.6/site-packages/
@@ -1456,7 +1454,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	echo "«generateBodyPy(root.body,root.parameters,name,env, local)»
 	
 	«FOR fd:functionCalled.values()»
-		
+	
 	«generatePyExpression(fd, name, local)»
 	
 	«ENDFOR»
@@ -1467,8 +1465,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	deactivate
 	
-		
-	#create the lambda function
+	
+	# create lambda function
 	echo "creation of the lambda function"
 	
 	echo "zip file too big, uploading it using s3"
