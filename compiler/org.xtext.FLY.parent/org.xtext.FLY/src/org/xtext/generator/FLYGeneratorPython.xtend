@@ -1755,6 +1755,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	# stop and remove localstack container
 	docker-compose down
 	
+«««	TODO consider to specifically free space occupied by localstack
 	# free some space used by localstack container
 	docker system prune --volumes -f
 	
