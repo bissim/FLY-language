@@ -234,6 +234,9 @@ class FLYGenerator extends AbstractGenerator {
 		import com.microsoft.azure.management.resources.fluentcore.arm.Region;
 		import isislab.azureclient.AzureClient;
 		«ENDIF»
+		«IF checkGraph()»
+		import isislab.fly.Graph;
+		«ENDIF»
 		
 		public class «name» {
 			
@@ -761,6 +764,28 @@ class FLYGenerator extends AbstractGenerator {
 								 	«deployFileOnCloud(dec,id_execution)»
 								«ENDIF»
 							'''
+					}
+					case "graph": {
+						val path = (dec.right as DeclarationObject).features.get(1).value_s
+						val separator = (dec.right as DeclarationObject).features.get(2).value_s
+						val class = (dec.right as DeclarationObject).features.get(3).value_s
+						val isDirected = (dec.right as DeclarationObject).features.get(4).value_s
+						val isWeighted = (dec.right as DeclarationObject).features.get(5).value_s
+						typeSystem.get(scope).put(dec.name, "Graph")
+						// 1st param: file path
+						// 2nd param: separator
+						// 3rd param: Java node class
+						// 4th param: isDirected
+						// 5th param: isWeighted
+						return '''				
+							Graph<«class», Object> «dec.name» = Graph.importGraph(
+								"«path»",
+								"«separator»",
+								«class».class,
+								«IF isWeighted == "true"»true«ELSE»false«ENDIF»,
+								«IF isDirected == "true"»true«ELSE»false«ENDIF»
+							);
+						'''
 					}
 					default: {
 						return ''''''
@@ -3233,6 +3258,41 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 						} else if (exp.feature.equals("nextInt")) {
 							return "Integer"
 						}
+					} else if (type.equals("graph")) { // TODO check graph method types
+						switch (exp.feature) {
+							case "nodeDegree": return "Integer"
+							case "nodeInDegree": return "Integer"
+							case "nodeOutDegree": return "Integer"
+							case "neighbourhood": return "Object[]"
+							case "nodeInEdges": return "Object[]"
+							case "nodeOutEdges": return "Object[]"
+							case "nodeSet": return "Object[]"
+							case "numNodes": return "Integer"
+							case "hasNode": return "Boolean"
+							case "getEdge": return "Object"
+							case "edgeSet": return "Object[]"
+							case "numEdges": return "Integer"
+							case "getEdgeWeight": return "Double"
+							case "hasEdge": return "Boolean"
+							case "bfsEdges": return "Object[]"
+							case "bfsNodes": return "Object[]"
+							case "bfsTree": return "Graph"
+							case "dfsEdges": return "Object[]"
+							case "dfsNodes": return "Object[]"
+							case "dfsTree": return "Graph"
+							case "isConnected": return "Boolean"
+							case "isStronglyConnected": return "Boolean"
+							case "connectedComponents": return "Object[]"
+							case "connectedSubgraphs": return "Graph[]"
+							case "numberConnectedComponents": return "Integer"
+							case "nodeConnectedComponent": return "Object[]"
+							case "stronglyConnectedComponents": return "Object[]"
+							case "stronglyConnectedSubgraphs": return "Graph[]"
+							case "isDAG": return "Boolean"
+							case "topologicalSort": return "Object[]"
+							case "getMST": return "Graph"
+							default: return "Object"
+						}
 					}
 				} else if (exp.feature.equals("split")) {
 					return "String[]"
@@ -3292,6 +3352,15 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 		){
 			if ((env.right as DeclarationObject).features.get(0).value_s.equals("azure"))
 				return true
+		}
+		return false
+	}
+
+	def Boolean checkGraph(){
+		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
+			filter[(right as DeclarationObject).features.get(0).value_s.equals("graph")]
+		){
+			return true
 		}
 		return false
 	}
