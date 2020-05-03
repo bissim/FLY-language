@@ -114,6 +114,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			.map[it.lib]
 			.toList
 		allReqs.add("pytz")
+		allReqs.add("networkx")
 		if(env.equals("azure"))
 			allReqs.add("azure-storage-queue")
 		saveToRequirements(allReqs, fsa)
@@ -193,7 +194,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 		return '''
 		import random
 		import time
-		import math 
+		import math
 		import pandas as pd
 		import json
 		
@@ -202,8 +203,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 		
 		
 		__sock_loc = socket.socket() # TODO
-		__sock_loc.connect(('', 9090))			
-			
+		__sock_loc.connect(('', 9090))
+		
 		«FOR chName : channelNames»
 			«chName» = __sock_loc.makefile('rwb')
 		«ENDFOR»
@@ -212,7 +213,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«generatePyExpression(fd, name, local)»
 			
 		«ENDFOR»	
-				
+		
 		def main(event):
 			«FOR exp : parameters»
 				«IF typeSystem.get(name).get((exp as VariableDeclaration).name).equals("Table") »
@@ -250,13 +251,16 @@ class FLYGeneratorPython extends AbstractGenerator {
 			import os
 			import random
 			import time
-			import math 
+			import math
 			«IF allReqs.contains("pandas")»
 			import pandas as pd
 			import numpy as np
 			«ENDIF»
 			import json
 			import urllib.request
+			«IF allReqs.contains("networkx")»
+			from fly.graph import Graph
+			«ENDIF»
 			
 			«IF env.contains("aws")»				
 			import boto3
@@ -438,6 +442,43 @@ class FLYGeneratorPython extends AbstractGenerator {
 								«exp.name» = urllib.request.urlopen(urllib.request.Request(«path»,headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
 							else:
 								«exp.name» = open(«path»,'rw')'''
+						}
+						case "graph": { // TODO check graph integration in Python (aws-debug)
+							var path = (exp.right as DeclarationObject).features.get(1).value_s
+							var separator = (exp.right as DeclarationObject).features.get(2).value_s
+							//var class = (exp.right as DeclarationObject).features.get(3).value_s // we can discard node class in Python
+							//var numParams = (exp.environment.right as DeclarationObject).features.length
+							var isDirected = (exp.right as DeclarationObject).features.get(4).value_s
+							var isWeighted = (exp.right as DeclarationObject).features.get(5).value_s
+
+							// set direction and weight properties of graph
+							if (isDirected == "true")
+							{
+								isDirected = "True"
+							}
+							else
+							{
+								isDirected = "False"
+							}
+
+							if (isWeighted == "true")
+							{
+								isWeighted = "True"
+							}
+							else
+							{
+								isWeighted = "False"
+							}
+
+							typeSystem.get(scope).put(exp.name, "Graph")
+							// TODO implement python logic to import a graph from file
+							// 1st param: file path
+							// 2nd param: separator character in CSV file
+							// 3rd param: imported graph is directed
+							// 4th param: imported graph is weighted
+							return '''
+								«exp.name» = Graph.import_graph(«path», «separator», «isDirected», «isWeighted»)
+							'''
 						}
 						default: {
 							return ''''''
@@ -1455,6 +1496,21 @@ class FLYGeneratorPython extends AbstractGenerator {
 	rm numpy-1.16.0-cp36-cp36m-manylinux1\_x86\_64.whl
 	echo "numpy installed"
 	
+	echo "installing networkx"
+	rm -rf networkx*
+	wget -q https://files.pythonhosted.org/packages/41/8f/dd6a8e85946def36e4f2c69c84219af0fa5e832b018c970e92f2ad337e45/networkx-2.4-py3-none-any.whl -O networkx.whl
+	unzip -q networkx.whl
+	rm networkx.whl
+	echo "networkx installed"
+	
+	echo "installing FLY-graph"
+	rm -rf isislab*
+	wget -q https://github.com/bissim/FLY-graph/releases/download/0.0.1-dev%2B20200408%2B2300/fly_isislab-0.0.1_dev_20200408_2300-py3-none-any.whl -O fly_isislab.whl
+	unzip -q fly_isislab.whl
+	rm fly_isislab.whl
+	echo "FLY-graph installed!"
+	
+	echo
 	echo "creating zip package"
 	zip -q -r9 ../../../../${id}\_lambda.zip .
 	echo "zip created"
