@@ -1696,7 +1696,14 @@ class FLYGeneratorPython extends AbstractGenerator {
 	def CharSequence AWSDebugUndeploy(Resource resource, String string, boolean local,boolean debug)'''
 	#!/bin/bash
 	
-	docker-compose down				
+	# stop and remove localstack container
+	docker-compose down
+	
+	# free some space used by localstack container
+	docker system prune --volumes -f
+	
+	echo "You may want to free additional space by running"
+	echo -e "\tsudo rm -rf /tmp/localstack/zipfile.* /tmp/_MEI*"
 	'''
 
 	def CharSequence compileScriptUndeploy(Resource resource, String name, boolean local){
