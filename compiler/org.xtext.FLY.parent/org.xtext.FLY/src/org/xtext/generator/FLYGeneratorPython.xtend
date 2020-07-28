@@ -115,7 +115,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 			.toList
 		allReqs.add("pytz")
 		allReqs.add("networkx")
-		if(env.equals("azure"))
+		allReqs.add("fly_graph")
+		if (env.equals("azure"))
 			allReqs.add("azure-storage-queue")
 		saveToRequirements(allReqs, fsa)
 		println(root.name)
@@ -444,7 +445,12 @@ class FLYGeneratorPython extends AbstractGenerator {
 								«exp.name» = open(«path»,'rw')'''
 						}
 						case "graph": { // TODO check graph integration in Python (aws-debug)
-							var path = (exp.right as DeclarationObject).features.get(1).value_s
+							var path = ""
+							if((exp.right as DeclarationObject).features.get(1).value_f != null){
+								path = (exp.right as DeclarationObject).features.get(1).value_f.name
+							}else{
+								path = (exp.right as DeclarationObject).features.get(1).value_s.replaceAll('"', '\'');
+							}
 							var separator = (exp.right as DeclarationObject).features.get(2).value_s
 							//var class = (exp.right as DeclarationObject).features.get(3).value_s // we can discard node class in Python
 							//var numParams = (exp.environment.right as DeclarationObject).features.length
@@ -1769,13 +1775,6 @@ class FLYGeneratorPython extends AbstractGenerator {
 			   case "aws-debug": AWSDebugUndeploy(resource,name,local,true)
 			   case "azure": AzureUndeploy(resource,name,local)
 			   default: this.env+" not supported"
-	  		}
-	} 
-	
-	
-
+			}
+	}
 }
-
-
-
-
