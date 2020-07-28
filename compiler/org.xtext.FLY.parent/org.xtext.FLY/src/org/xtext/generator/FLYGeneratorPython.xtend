@@ -748,26 +748,14 @@ class FLYGeneratorPython extends AbstractGenerator {
 			if ((exp.object as CastExpression).type.equals("Dat")) {
 				return '''
 				for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name».itertuples(index=False):
-					«IF exp.body instanceof BlockExpression»
-					«FOR e: (exp.body as BlockExpression).expressions»
-					«generatePyExpression(e,scope, local)»
-					«ENDFOR»
-					«ELSE»
-					«generatePyExpression(exp.body,scope, local)»
-					«ENDIF»
+					«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			} else if ((exp.object as CastExpression).type.equals("Object")) {
 				val variableName = (exp.index.indices.get(0) as VariableDeclaration).name
 				return '''
 					for «variableName»k, «variableName»v in «((exp.object as CastExpression).target as VariableLiteral).variable.name».items():
 						«(exp.index.indices.get(0) as VariableDeclaration).name» = {'k': «variableName»k, 'v': «variableName»v} 
-						«IF exp.body instanceof BlockExpression»
-						«FOR e: (exp.body as BlockExpression).expressions»
-							«generatePyExpression(e,scope, local)»
-						«ENDFOR»
-						«ELSE»
-							«generatePyExpression(exp.body,scope, local)»	
-						«ENDIF»
+						«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			}
 		} else if (exp.object instanceof RangeLiteral) {
@@ -775,11 +763,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			val rRange = (exp.object as RangeLiteral).value2
 			return '''
 				for «(exp.index.indices.get(0) as VariableDeclaration).name» in range(«lRange», «rRange»):
-					«IF exp.body instanceof BlockExpression»
-						«generatePyBlockExpression(exp.body as BlockExpression,scope, local)»
-					«ELSE»
-						«generatePyExpression(exp.body,scope, local)»
-					«ENDIF»
+					«generatePyForBodyExpression(exp.body, scope, local)»
 			'''
 		} else if (exp.object instanceof VariableLiteral) {
 			println("Variable: "+ (exp.object as VariableLiteral).variable.name +" type: "+ typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name)) 
@@ -790,13 +774,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 				return '''
 					for «variableName»k, «variableName»v in «(exp.object as VariableLiteral).variable.name».items():
 						«(exp.index.indices.get(0) as VariableDeclaration).name» = {'k': «variableName»k, 'v': «variableName»v}
-						«IF exp.body instanceof BlockExpression»
-							«FOR e: (exp.body as BlockExpression).expressions»
-								«generatePyExpression(e,scope, local)»
-							«ENDFOR»
-						«ELSE»
-								«generatePyExpression(exp.body,scope, local)»	
-						«ENDIF»
+						«generatePyForBodyExpression(exp.body, scope, local)»
 					
 				'''
 			} else if ((exp.object as VariableLiteral).variable.typeobject.equals('dat') || 
@@ -804,46 +782,22 @@ class FLYGeneratorPython extends AbstractGenerator {
 				) {
 				return '''
 				for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name».itertuples(index=False):
-					«IF exp.body instanceof BlockExpression»
-					«FOR e: (exp.body as BlockExpression).expressions»
-					«generatePyExpression(e,scope, local)»
-					«ENDFOR»
-					«ELSE»
-					«generatePyExpression(exp.body,scope, local)»
-					«ENDIF»
+					«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			} else if(typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("File") ){
 				return'''
 				for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name»:
-					«IF exp.body instanceof BlockExpression»
-					«FOR e: (exp.body as BlockExpression).expressions»
-					«generatePyExpression(e,scope, local)»
-					«ENDFOR»
-					«ELSE»
-					«generatePyExpression(exp.body,scope, local)»
-					«ENDIF»
+					«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			}else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("Directory") ){
 				return '''
 				for «(exp.index.indices.get(0) as VariableDeclaration).name» in os.listdir(«(exp.object as VariableLiteral).variable.name»):
-					«IF exp.body instanceof BlockExpression»
-					«FOR e: (exp.body as BlockExpression).expressions»
-					«generatePyExpression(e,scope, local)»
-					«ENDFOR»
-					«ELSE»
-					«generatePyExpression(exp.body,scope, local)»
-					«ENDIF»
+					«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			} else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("String[]") ){
 				return'''
 				for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name»:
-					«IF exp.body instanceof BlockExpression»
-					«FOR e: (exp.body as BlockExpression).expressions»
-					«generatePyExpression(e,scope, local)»
-					«ENDFOR»
-					«ELSE»
-					«generatePyExpression(exp.body,scope, local)»
-					«ENDIF»
+					«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			}
 		}
@@ -854,17 +808,20 @@ class FLYGeneratorPython extends AbstractGenerator {
 				return '''
 				for «row» in range(__«(exp.object as VariableLiteral).variable.name»_rows):
 					for «col» in range(__«(exp.object as VariableLiteral).variable.name»_cols):
-						«IF exp.body instanceof BlockExpression»
-						«FOR e: (exp.body as BlockExpression).expressions»
-						«generatePyExpression(e,scope, local)»
-						«ENDFOR»
-						«ELSE»
-						«generatePyExpression(exp.body,scope, local)»
-						«ENDIF»
+						«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
-			}	
+			}
 		}
 		
+	}
+
+	// TODO test
+	def generatePyForBodyExpression(Expression body, String scope, boolean local) {
+		if (body instanceof BlockExpression) {
+			generatePyBlockExpression(body, scope, local)
+		} else {
+			generatePyExpression(body, scope, local)
+		}
 	}
 
 	def generatePyBlockExpression(BlockExpression block, String scope, boolean local) {
