@@ -572,8 +572,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 			
 		} else if (exp instanceof NativeExpression){
 			s +='''«generateNativeEpression(exp,scope,local)»'''
+		} else if (exp instanceof VariableFunction) {
+			s += '''«generatePyVariableFunction(exp,local,scope)»'''
 		}
-			
+
 		return s
 	}
 	
@@ -800,6 +802,20 @@ class FLYGeneratorPython extends AbstractGenerator {
 						«generatePyForBodyExpression(exp.body, scope, local)»
 					'''
 				}
+			} else if (exp.object instanceof VariableFunction) {
+				// TODO replicate 'for' structure for variable function
+				var function = exp.object as VariableFunction
+				if (typeSystem.get(scope).get(function.target.name).contains("Graph")) {
+//					println("GRAPH TEST (varDec, i.e. exp.index.indices.get(0)): " + varDec)
+//					println("GRAPH TEST (function, i.e. exp.object): " + function)
+//					println("GRAPH TEST (exp.body): " + exp.body)
+					return '''
+					for «(exp.index.indices.get(0) as VariableDeclaration).name» in «generatePyVariableFunction(function, local, scope)»:
+						«generatePyForBodyExpression(exp.body, scope, local)»
+					'''
+				} else {
+					println("Looping over " + function)
+				}
 			}
 		}else if(exp.index.indices.length == 2){
 			if(typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).contains("Matrix")){
@@ -875,15 +891,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 		} else if (exp instanceof VariableLiteral) {
 			return '''«exp.variable.name»'''
 		} else if (exp instanceof VariableFunction) {
-			if ((exp.target.right instanceof DeclarationObject)  && (exp.target.right as DeclarationObject).features.get(0).value_s.equals("random") ) {
-				return '''random.random()'''
-			}else if(exp.feature.equals("length")){
-				return '''len(«exp.target.name»)'''
-			} else if(exp.feature.equals("containsKey")){
-				return '''«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)» in «exp.target.name»'''
-			} else if(exp.feature.equals("split")){
-				return '''str(«exp.target.name»).split(«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)»)'''
-			}
+			return generatePyVariableFunction(exp, local, scope)
 		} else if (exp instanceof TimeFunction) {
 			if (exp.value !== null) {
 				return '''int(time.time() * 1000) - «exp.value.name»'''
@@ -944,7 +952,45 @@ class FLYGeneratorPython extends AbstractGenerator {
 			return '''# ???'''
 		}
 	}
-	
+
+	def generatePyVariableFunction(VariableFunction exp, Boolean local, String scope) {
+		// TODO define
+		if ((exp.target.right instanceof DeclarationObject) && (exp.target.right as DeclarationObject).features.get(0).value_s.equals("random") ) {
+			return '''random.random()'''
+		} else if(exp.feature.equals("length")){
+			return '''len(«exp.target.name»)'''
+		} else if(exp.feature.equals("containsKey")){
+			return '''«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)» in «exp.target.name»'''
+		} else if(exp.feature.equals("split")){
+			return '''str(«exp.target.name»).split(«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)»)'''
+		} else if ((exp.target.right instanceof DeclarationObject) && (exp.target.right as DeclarationObject).features.get(0).value_s.equals("Graph")) {
+			// begin graph methods declaration
+			var args = exp.expressions.size;
+			var invocation = '''«exp.target.name».«exp.feature»'''
+			if (args == 1) {
+				return '''«invocation»(«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)»)'''
+			} else if (args > 1) {
+				// please leave this return indentation like this
+				return '''«invocation»(«
+					FOR i : 0 ..< args - 1»
+						«generatePyArithmeticExpression(
+							exp.expressions.get(i),
+							scope,
+							local
+						)», «
+					ENDFOR»«
+					generatePyArithmeticExpression(
+						exp.expressions.get(args - 1),
+						scope,
+						local
+					)
+				»)'''
+			} else {
+				return '''«invocation»()'''
+			}
+		}
+	}
+
 	def generatePyCast(CastExpression cast, String scope, boolean local) {
 		switch(cast.type) { // 'String' | 'Integer' | 'Date' | 'Dat' | 'Object'  | 'Double'
 			case "String": return '''str(«generatePyArithmeticExpression(cast.target, scope, local)»)'''
