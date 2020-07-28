@@ -1176,196 +1176,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	def CharSequence AWSDeploy(Resource resource, String name, boolean local, boolean debug)
 	'''
-	#!/bin/bash
-	
-	if [ $# -eq 0 ]
-	  then
-	    echo "No arguments supplied. ./aws_deploy.sh <user_profile> <function_name> <id_function_execution>"
-	    exit 1
-	fi
-	
-	echo "Checking that aws-cli is installed"
-	which aws
-	if [ $? -eq 0 ]; then
-	      echo "aws-cli is installed, continuing..."
-	else
-	      echo "You need aws-cli to deploy this lambda. Google 'aws-cli install'"
-	      exit 1
-	fi
-	
-	echo "Checking wheter virtualenv is installed"
-	which virtualenv
-	if [ $? -eq 0 ]; then
-		echo "virtualenv is installed, continuing..."
-	else
-	     echo "You need to install virtualenv. Google 'virtualenv install'"
-	     exit 1
-	fi
-	
-	
-	user=$1
-	function=$2
-	id=$3
-	
-	echo '{
-			"Version": "2012-10-17",
-			"Statement": [
-				{
-					"Effect": "Allow",
-					"Action": [
-						"sqs:DeleteMessage",
-						"sqs:GetQueueAttributes",
-						"sqs:ReceiveMessage",
-						"sqs:SendMessage",
-						"sqs:*"
-					],
-					"Resource": "*" 
-				},
-				{
-				"Effect": "Allow",
-				"Action": [
-					"s3:*"
-				],
-				"Resource": "*" 
-									},
-				{
-					"Effect":"Allow",
-					"Action": [
-						"logs:CreateLogGroup",
-						"logs:CreateLogStream",
-						"logs:PutLogEvents"
-					],
-					"Resource": "*"
-				}
-			]
-		}' > policyDocument.json
-	
-	echo '{
-				"Version": "2012-10-17",
-				"Statement": [
-					{
-						"Effect": "Allow",
-						"Principal": {
-							"Service": "lambda.amazonaws.com"
-						},
-						"Action": "sts:AssumeRole" 
-					}
-				]
-			}' > rolePolicyDocument.json
-	
-	#create role policy
-	
-	echo "creation of role lambda-sqs-execution ..."
-	
-	role_arn=$(aws iam --profile ${user} get-role --role-name lambda-sqs-execution --query 'Role.Arn')
-	
-	if [ $? -eq 255 ]; then 
-		role_arn=$(aws iam --profile ${user} create-role --role-name lambda-sqs-execution --assume-role-policy-document file://rolePolicyDocument.json --output json --query 'Role.Arn')
-	fi
-	
-	echo "role lambda-sqs-execution created at ARN "$role_arn
-	
-	aws iam --profile ${user} put-role-policy --role-name lambda-sqs-execution --policy-name lambda-sqs-policy --policy-document file://policyDocument.json
-	
-	
-	echo "Installing requirements"
-	
-	virtualenv venv -p «language»
-	
-	source venv/bin/activate
-	
-	
-	echo "Checking wheter pip3 is installed"
-	which pip3
-	if [ $? -eq 0 ]; then
-		echo "pip3 is installed, continuing..."
-	else
-	     echo "You need to install pip3. Google 'pip3 install'"
-	     exit 1
-	fi
-	
-	PIPVER="$(pip3 -V | grep -Eo "(\d+\.)+\d+" | grep -Eo "\d+" | head -1)"
-	if [ ${PIPVER} -lt 19 ]; then
-		echo "pip version is too old. installing new one"
-		curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-		python get-pip.py
-	fi
-		
-	pip3 install -r ./src-gen/requirements.txt
-			
-	echo ""
-	echo "add precompliled libraries"
-	
-	cd venv/lib/python3.6/site-packages/
-	«IF allReqs.contains("ortools") »
-	echo "installing ortools"
-	rm -rf ortools*
-	wget https://files.pythonhosted.org/packages/64/13/8c8d0fe23da0767ec0f8d00ad14619a20bc6d55ca49a3bd13700e629a1be/ortools-6.10.6025-cp36-cp36m-manylinux1\_x86\_64.whl
-	unzip ortools-6.10.6025-cp36-cp36m-manylinux1\_x86\_64.whl
-	rm ortools-6.10.6025-cp36-cp36m-manylinux1\_x86\_64.whl
-	echo "ortools installed"
-	«ENDIF»
-	«IF allReqs.contains("pandas")»
-	echo "installing pandas"
-	rm -rf pandas*
-	wget https://files.pythonhosted.org/packages/f9/e1/4a63ed31e1b1362d40ce845a5735c717a959bda992669468dae3420af2cd/pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl
-	unzip pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl
-	rm pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl 
-	echo "pandas installed"
-	«ENDIF»
-	«IF allReqs.contains("numpy")»
-	echo "installing numpy"
-	rm -rf numpy*
-	wget https://files.pythonhosted.org/packages/7b/74/54c5f9bb9bd4dae27a61ec1b39076a39d359b3fb7ba15da79ef23858a9d8/numpy-1.16.0-cp36-cp36m-manylinux1\_x86\_64.whl
-	unzip numpy-1.16.0-cp36-cp36m-manylinux1\_x86\_64.whl
-	rm numpy-1.16.0-cp36-cp36m-manylinux1\_x86\_64.whl
-	echo "numpy installed"
-	«ENDIF»
-	echo "creating zip package"
-	zip -q -r9 ../../../../${id}\_lambda.zip .
-	echo "zip created"
-	
-	cd ../../../../
-	
-	
-	echo "«generateBodyPy(root.body,root.parameters,name,env, local)»
-	
-	«FOR fd:functionCalled.values()»
-		
-	«generatePyExpression(fd, name, local)»
-	
-	«ENDFOR»
-	" > ${function}.py
-	
-	
-	zip -g ${id}_lambda.zip ${function}.py
-	
-	deactivate
-	
-		
-	#create the lambda function
-	echo "creation of the lambda function"
-	
-	echo "zip file too big, uploading it using s3"
-	echo "creating bucket for s3"
-	aws s3 --profile ${user} mb s3://${function}${id}bucket
-	echo "s3 bucket created. uploading file"
-	aws s3 --profile ${user} cp ${id}_lambda.zip s3://${function}${id}bucket --grants read=uri=http://acs.amazonaws.com/groups/global/AllUsers
-	echo "file uploaded, creating function"
-	aws lambda --profile ${user} create-function --function-name ${function}_${id} --code S3Bucket=""${function}""${id}"bucket",S3Key=""${id}"_lambda.zip" --handler ${function}.handler --runtime «language» --role ${role_arn//\"} --memory-size «memory» --timeout «timeout»
-	echo "lambda function created"
-	
-	
-	# clear 
-	rm -r venv/
-	rm ${function}.py
-	rm ${id}_lambda.zip
-	rm rolePolicyDocument.json
-	rm policyDocument.json
-	'''
-	
-	def CharSequence AWSDebugDeploy(Resource resource, String name, boolean local, boolean debug)
-	'''
+	«val profile = if (debug) "dummy_fly_debug" else "${user}"»
+	«val endpoint = "http://localhost"»
 	#!/bin/bash
 	
 	if [[ $# -eq 0 ]]; then
@@ -1383,8 +1195,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	fi
 	
 	# check installed Python version
-	# TODO this may work for localstack versions
-	# more recent than 0.9.6
+««« TODO this may work for localstack versions more recent than 0.9.6
 	#PYVER="$(python3 -V | grep -Po "(\d+\.\d+)" | head -1)"
 	#echo "Python version: $PYVER"
 	#PYVER_C=${PYVER/./}
@@ -1396,23 +1207,25 @@ class FLYGeneratorPython extends AbstractGenerator {
 	echo "Checking whether virtualenv is installed"
 	which virtualenv
 	if [[ $? -eq 0 ]]; then
-		echo "virtualenv is installed, continuing..."
+	    echo "virtualenv is installed, continuing..."
 	else
 	    echo "You need to install virtualenv. Google 'virtualenv install'"
 	    exit 1
 	fi
 	
-	aws configure list --profile dummy_fly_debug
+	«IF debug»
+	aws configure list --profile «profile»
 	if [[ $? -eq 0 ]]; then
-		echo "dummy user found, continuing..."
+	    echo "dummy user found, continuing..."
 	else
 	    echo "creating dummy user..."
-	    aws configure set aws_access_key_id dummy --profile dummy_fly_debug
-	    aws configure set aws_secret_access_key dummy --profile dummy_fly_debug
-	    aws configure set region us-east-1 --profile dummy_fly_debug
-	    aws configure set output json --profile dummy_fly_debug
+	    aws configure set aws_access_key_id dummy --profile «profile»
+	    aws configure set aws_secret_access_key dummy --profile «profile»
+	    aws configure set region us-east-1 --profile «profile»
+	    aws configure set output json --profile «profile»
 	    echo "dummy user created"
 	fi
+	«ENDIF»
 	
 	user=$1
 	function=$2
@@ -1467,17 +1280,17 @@ class FLYGeneratorPython extends AbstractGenerator {
 	# create role policy
 	echo "creation of role lambda-sqs-execution ..."
 	
-	role_arn=$(aws iam get-role --role-name lambda-sqs-execution --query 'Role.Arn' --endpoint-url=http://localhost:4593 --profile dummy_fly_debug)
+	role_arn=$(aws iam get-role --role-name lambda-sqs-execution --query 'Role.Arn' --profile «profile»«IF debug» --endpoint-url=«endpoint»:4593«ENDIF») 
 	
-	if [[ -z $role_arn ]]; then
-	    role_arn=$(aws iam create-role --role-name lambda-sqs-execution --assume-role-policy-document file://rolePolicyDocument.json --output json --query 'Role.Arn' --endpoint-url=http://localhost:4593 --profile dummy_fly_debug)
+	if [[ -z $role_arn ]]; then 
+	    role_arn=$(aws iam create-role --role-name lambda-sqs-execution --assume-role-policy-document file://rolePolicyDocument.json --output json --query 'Role.Arn' --profile «profile»«IF debug» --endpoint-url=«endpoint»:4593«ENDIF»)
 	fi
 	
 	echo "role lambda-sqs-execution created at ARN "$role_arn
 	
-	aws iam put-role-policy --role-name lambda-sqs-execution --policy-name lambda-sqs-policy --policy-document file://policyDocument.json --endpoint-url=http://localhost:4593 --profile dummy_fly_debug
-	aws logs create-log-group --log-group-name dummy_fly_logs --endpoint-url=http://localhost:4586 --profile dummy_fly_debug
-	aws logs create-log-stream --log-group-name dummy_fly_logs --log-stream-name dummy_fly_log_stream --endpoint-url=http://localhost:4586 --profile dummy_fly_debug
+	aws iam put-role-policy --role-name lambda-sqs-execution --policy-name lambda-sqs-policy --policy-document file://policyDocument.json --profile «profile»«IF debug» --endpoint-url=http://localhost:4593«ENDIF»
+	aws logs create-log-group --log-group-name «IF debug»dummy_«ENDIF»fly_logs --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
+	aws logs create-log-stream --log-group-name «IF debug»dummy_«ENDIF»fly_logs --log-stream-name dummy_fly_log_stream --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
 	
 	
 	echo "Installing requirements"
@@ -1487,50 +1300,38 @@ class FLYGeneratorPython extends AbstractGenerator {
 	source venv/bin/activate
 	
 	
-	echo "Checking whether pip3 is installed"
+	echo "Checking wheter PIP is installed"
 	which pip3
 	if [[ $? -eq 0 ]]; then
-		echo "pip3 is installed, continuing..."
+	    echo "PIP is installed"
 	else
-	    echo "You need to install pip3. Google 'pip3 install'"
+	    echo "You need to install PIP. Google 'pip install'"
 	    exit 1
 	fi
 	
-	PIPVER="$(python3 -m pip -V | grep -Po "(\d+\.)+\d+" | grep -Po "\d+" | head -1)"
-	if [[ $PIPVER -lt 19 ]]; then
-		echo "pip version is too old. installing new one"
-		python3 -m pip install --upgrade pip
-	fi
-	
-	python3 -m pip install pytz
-	if [[ $? -eq 0 ]]; then
-	    echo "..."
-	else
-	    echo "pip install pytz failed"
-	    exit 1
-	fi
-	
-	python3 -m pip install ortools
-	if [[ $? -eq 0 ]]; then
-	    echo "..."
-	else
-	    echo "pip install ortools failed"
-	    exit 1
-	fi
+	#PIPVER="$(python3 -m pip -V | grep -Po "(\d+\.)+\d+" | grep -Po "\d+" | head -1)"
+	#if [[ ${PIPVER} -lt 19 ]]; then
+	#    echo "pip version is too old. installing new one"
+««« PIP would be out of date anyway
+	echo "Updating PIP..."
+	    python3 -m pip install --upgrade pip
+	#fi
 	
 	python3 -m pip install -r ./src-gen/requirements.txt
 	
-	
 	echo
-	echo "add precompliled libraries"
-	
+	echo "add precompiled libraries"
 	cd venv/lib/«language»/site-packages/
+	«IF allReqs.contains("ortools")»
+	
 	echo "installing ortools"
 	rm -rf ortools*
 	wget -q https://files.pythonhosted.org/packages/64/13/8c8d0fe23da0767ec0f8d00ad14619a20bc6d55ca49a3bd13700e629a1be/ortools-6.10.6025-cp36-cp36m-manylinux1\_x86\_64.whl
 	unzip -q ortools-6.10.6025-cp36-cp36m-manylinux1\_x86\_64.whl
 	rm ortools-6.10.6025-cp36-cp36m-manylinux1\_x86\_64.whl
 	echo "ortools installed"
+	«ENDIF»
+	«IF allReqs.contains("pandas")»
 	
 	echo "installing pandas"
 	rm -rf pandas*
@@ -1538,6 +1339,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 	unzip -q pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl
 	rm pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl 
 	echo "pandas installed"
+	«ENDIF»
+	«IF allReqs.contains("numpy")»
 	
 	echo "installing numpy"
 	rm -rf numpy*
@@ -1545,20 +1348,29 @@ class FLYGeneratorPython extends AbstractGenerator {
 	unzip -q numpy-1.16.0-cp36-cp36m-manylinux1\_x86\_64.whl
 	rm numpy-1.16.0-cp36-cp36m-manylinux1\_x86\_64.whl
 	echo "numpy installed"
+	«ENDIF»
+	«IF allReqs.contains("networkx")»
 	
 	echo "installing networkx"
 	rm -rf networkx*
 	wget -q https://files.pythonhosted.org/packages/41/8f/dd6a8e85946def36e4f2c69c84219af0fa5e832b018c970e92f2ad337e45/networkx-2.4-py3-none-any.whl -O networkx.whl
 	unzip -q networkx.whl
 	rm networkx.whl
+	rm -rf decorator*
+	wget -q https://files.pythonhosted.org/packages/ed/1b/72a1821152d07cf1d8b6fce298aeb06a7eb90f4d6d41acec9861e7cc6df0/decorator-4.4.2-py2.py3-none-any.whl -O decorator.whl
+	unzip -q decorator.whl
+	rm decorator.whl
 	echo "networkx installed"
+	«ENDIF»
+	«IF allReqs.contains("fly_graph")»
 	
-	echo "installing FLY-graph"
-	rm -rf isislab*
-	wget -q https://github.com/bissim/FLY-graph/releases/download/0.0.1-dev%2B20200408%2B2300/fly_isislab-0.0.1_dev_20200408_2300-py3-none-any.whl -O fly_isislab.whl
-	unzip -q fly_isislab.whl
-	rm fly_isislab.whl
-	echo "FLY-graph installed!"
+	echo "installing FLY graph"
+	rm -rf fly*
+	wget -q https://github.com/bissim/FLY-graph/releases/download/0.0.1-dev%2B20200706/fly_graph-0.0.1.dev0+20200706-py3-none-any.whl -O fly_graph.whl
+	unzip -q -d . fly_graph.whl fly/*
+	rm fly_graph.whl
+	echo "FLY graph installed"
+	«ENDIF»
 	
 	echo
 	echo "creating zip package"
@@ -1569,7 +1381,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	
 	# generate Python function script
-	echo "«generateBodyPy(root.body,root.parameters,name,env, local)»
+	echo "«generateBodyPy(root.body, root.parameters, name, env, local)»
 	
 	«FOR fd:functionCalled.values()»
 	
@@ -1590,11 +1402,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 	
 	echo "zip file too big, uploading it using s3"
 	echo "creating bucket for s3"
-	aws s3 mb s3://${function}${id}bucket --endpoint-url=http://localhost:4572 --profile dummy_fly_debug
+	aws s3 mb s3://${function}${id}bucket --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
 	echo "s3 bucket created. uploading file"
-	aws s3 cp ${id}_lambda.zip s3://${function}${id}bucket --grants read=uri=http://acs.amazonaws.com/groups/global/AllUsers --endpoint-url=http://localhost:4572 --profile dummy_fly_debug
+	aws s3 cp ${id}_lambda.zip s3://${function}${id}bucket --grants read=uri=http://acs.amazonaws.com/groups/global/AllUsers --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
 	echo "file uploaded, creating function"
-	aws lambda create-function --function-name ${function}_${id} --code S3Bucket=""${function}""${id}"bucket",S3Key=""${id}"_lambda.zip" --handler ${function}.handler --runtime «language» --role ${role_arn//\"} --memory-size «memory» --timeout «timeout» --endpoint-url=http://localhost:4574 --profile dummy_fly_debug
+	aws lambda create-function --function-name ${function}_${id} --code S3Bucket=""${function}""${id}"bucket",S3Key=""${id}"_lambda.zip" --handler ${function}.handler --runtime «language» --role ${role_arn//\"} --memory-size «memory» --timeout «timeout» --profile «profile»«IF debug» --endpoint-url=«endpoint»:4574«ENDIF»
 	echo "lambda function created"
 	
 	
@@ -1605,7 +1417,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 	rm rolePolicyDocument.json
 	rm policyDocument.json
 	'''
-	
+
+	def CharSequence AWSDebugDeploy(Resource resource, String name, boolean local, boolean debug)
+	'''«AWSDeploy(resource, name, local, debug)»'''
+
 	def CharSequence compileDockerCompose(Resource resource)'''
 	docker network create -d bridge --subnet 192.168.0.0/24 --gateway 192.168.0.1 mynet
 	echo \
