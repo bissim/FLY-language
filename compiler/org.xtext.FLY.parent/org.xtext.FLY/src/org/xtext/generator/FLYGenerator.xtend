@@ -2755,7 +2755,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 					«generateExpression(body,scope)»
 				}
 			'''
-		} else if (object instanceof VariableLiteral) {
+		} else if (object instanceof VariableLiteral) { // FIXME type is null if object is an inner for variable
 			println("for :" +(object as VariableLiteral).variable.name)
 			if (((object as VariableLiteral).variable.typeobject.equals('var') &&
 				((object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
@@ -2789,7 +2789,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 							«generateForBodyExpression(body, scope)»
 						}
 					'''
-				}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("String[]")){
+				}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("[]")){
 					return '''
 						for (String «(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name») {
 							«generateForBodyExpression(body, scope)»
