@@ -2822,9 +2822,64 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 				'''
 			} 
 		} else if (object instanceof VariableFunction) {
+			val function = object as VariableFunction
+			val targetType = typeSystem.get(scope).get(function.target.name)
+			if (targetType.contains("Graph")) {
+				// considerare il tipo di ritorno dalla funzione
+				// in base al tipo di ritorno costruisci l'intestazione del
+				// ciclo for che itera sul giusto tipo di dati
+				val feature = function.feature
+				var indexVarName = (indexes.indices.get(0) as VariableDeclaration).name
+				print("Invoking " + feature + " Graph method over " + function.target.name)
+				if ( // methods return Object[]
+					this.graphMethodsReturnTypes.get(feature).equals("Object[]")
+				) {
+					print(" returning 'Object[]'")
+					if (
+						feature.equals("connectedComponents") ||
+						feature.equals("stronglyConnectedComponents")
+					) { // methods returning Object[] whose elements are still Object[]
+						println(" as array of arrays...")
+						// TODO convert the array of array representation into a map
+						return '''
+						// first convert array of arrays into a map
+						Object[] comps = «generateVariableFunction(function, false, scope)»;
+						HashMap<Integer, Object[]> compsMap = new HashMap<>();
+						««« TODO convert array of arrays into map
+						
+						// then iterate over it
+						for (Object[] «indexVarName»: ) {
+							«generateForBodyExpression(body, scope)»
+						}
+						'''
+					} else {
+						println("...")
+						typeSystem.get(scope).put(indexVarName, "Object")
+						return '''
+						for (Object «indexVarName»: «generateVariableFunction(function, false, scope)») {
+							«generateForBodyExpression(body, scope)»
+						}
+						'''
+					}
+				} else if ( // methods returning Graph[]
+					this.graphMethodsReturnTypes.get(feature).equals("Graph[]")
+				) {
+					println(" returning 'Graph[]'...")
+					typeSystem.get(scope).put(indexVarName, "Graph")
+					return '''
+					for (Graph «indexVarName»: «generateVariableFunction(function, false, scope)») {
+						«generateForBodyExpression(body, scope)»
+					}
+					'''
+				} else { // else lascio quello che ci sta
+					println()
+					return '''«generateVariableFunction(function, false, scope)»;'''
+				}
+			}
+
 			return '''
-			«generateVariableFunction(object as VariableFunction,false,scope)»
-			for(HashMap<String,Object> «(indexes.indices.get(0) as VariableDeclaration).name» : __«(object as VariableFunction).target.name»_rows.values()){
+			«generateVariableFunction(function, false, scope)»
+			for(HashMap<String,Object> «(indexes.indices.get(0) as VariableDeclaration).name» : __«function.target.name»_rows.values()){
 				«generateForBodyExpression(body, scope)»
 			}'''
 		} else if(object instanceof IndexObject){ // if  it's a sub-array or a sub-matrix
