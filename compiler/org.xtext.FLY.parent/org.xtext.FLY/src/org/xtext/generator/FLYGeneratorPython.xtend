@@ -483,7 +483,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 							// 3rd param: imported graph is directed
 							// 4th param: imported graph is weighted
 							return '''
-								«exp.name» = Graph.import_graph(«path», «separator», «isDirected», «isWeighted»)
+								if 'http' in '«path»':
+									graph_file = urllib.request.urlopen(urllib.request.Request('«path»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
+								else:
+									graph_file = open('«path»','rw')
+								«exp.name» = Graph.importGraph(graph_file, '«separator»', «isDirected», «isWeighted»)
 							'''
 						}
 						default: {
