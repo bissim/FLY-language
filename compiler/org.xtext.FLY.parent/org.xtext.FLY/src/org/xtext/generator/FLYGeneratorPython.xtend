@@ -1118,6 +1118,43 @@ class FLYGeneratorPython extends AbstractGenerator {
 				} else if (exp.feature.equals("nextInt")) {
 					return "Integer"
 				}
+			} else if (exp.target.typeobject.equals("graph")) { // TODO check graph method types
+				switch (exp.feature) { // TODO can I use a map here?
+					case "nodeDegree": return "Integer"
+					case "nodeInDegree": return "Integer"
+					case "nodeOutDegree": return "Integer"
+					case "neighbourhood": return "Object[]"
+					case "nodeInEdges": return "Object[]"
+					case "nodeOutEdges": return "Object[]"
+					case "nodeSet": return "Object[]"
+					case "numNodes": return "Integer"
+					case "hasNode": return "Boolean"
+					case "getEdge": return "Object"
+					case "edgeSet": return "Object[]"
+					case "numEdges": return "Integer"
+					case "getEdgeSource": return "Object"
+					case "getEdgeTarget": return "Object"
+					case "getEdgeWeight": return "Double"
+					case "hasEdge": return "Boolean"
+					case "bfsEdges": return "Object[]"
+					case "bfsNodes": return "Object[]"
+					case "bfsTree": return "Graph"
+					case "dfsEdges": return "Object[]"
+					case "dfsNodes": return "Object[]"
+					case "dfsTree": return "Graph"
+					case "isConnected": return "Boolean"
+					case "isStronglyConnected": return "Boolean"
+					case "connectedComponents": return "Object[]"
+					case "connectedSubgraphs": return "Graph[]"
+					case "numberConnectedComponents": return "Integer"
+					case "nodeConnectedComponent": return "Object[]"
+					case "stronglyConnectedComponents": return "Object[]"
+					case "stronglyConnectedSubgraphs": return "Graph[]"
+					case "isDAG": return "Boolean"
+					case "topologicalSort": return "Object[]"
+					case "getMST": return "Graph"
+					default: return "Object"
+				}
 			}
 		} else {
 			return "Object"
