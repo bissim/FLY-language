@@ -1621,12 +1621,13 @@ class FLYGeneratorPython extends AbstractGenerator {
 	# stop and remove localstack container
 	docker-compose down
 	
-«««	TODO consider to specifically free space occupied by localstack
-	# free some space used by localstack container
-	docker system prune --volumes -f
+	# free some space used by localstack containers
+	docker network rm mynet # mynet is created by docker-compose
+	docker ps -a | awk '{ print $1,$2 }' | grep lambci/lambda:«language» | \
+		awk '{print $1 }' | xargs -I {} docker rm {}
 	
 	echo "You may want to free additional space by running"
-	echo -e "\tsudo rm -rf /tmp/localstack/zipfile.* /tmp/_MEI*"
+	echo -e "\tsudo rm -rf /tmp/_MEI*"
 	'''
 
 	def CharSequence compileScriptUndeploy(Resource resource, String name, boolean local){
