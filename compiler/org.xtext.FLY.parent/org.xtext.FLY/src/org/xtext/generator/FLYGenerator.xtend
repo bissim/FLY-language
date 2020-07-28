@@ -83,6 +83,8 @@ class FLYGenerator extends AbstractGenerator {
 	var list_environment = new ArrayList<String>(Arrays.asList("smp","aws","aws-debug","azure"));
 	Resource res = null
 
+	val graphMethodsReturnTypes = this.initializeGraphMethodsReturnTypes
+
 	override void doGenerate(Resource resource, IFileSystemAccess2 fsa, IGeneratorContext context) {
 		if(resource.allContents.size >0 ){
 			res = resource;
@@ -130,10 +132,45 @@ class FLYGenerator extends AbstractGenerator {
 		}
 		
 	}
-		
-	
-	
-		
+
+	def initializeGraphMethodsReturnTypes() {
+		return #{
+			"nodeDegree" -> "Integer",
+			"nodeInDegree" -> "Integer",
+			"nodeOutDegree" -> "Integer",
+			"neighbourhood" -> "Object[]",
+			"nodeInEdges" -> "Object[]",
+			"nodeOutEdges" -> "Object[]",
+			"nodeSet" -> "Object[]",
+			"numNodes" -> "Integer",
+			"hasNode" -> "Boolean",
+			"getEdge" -> "Object",
+			"edgeSet" -> "Object[]",
+			"numEdges" -> "Integer",
+			"getEdgeSource" -> "Object",
+			"getEdgeTarget" -> "Object",
+			"getEdgeWeight" -> "Double",
+			"hasEdge" -> "Boolean",
+			"bfsEdges" -> "Object[]",
+			"bfsNodes" -> "Object[]",
+			"bfsTree" -> "Graph",
+			"dfsEdges" -> "Object[]",
+			"dfsNodes" -> "Object[]",
+			"dfsTree" -> "Graph",
+			"isConnected" -> "Boolean",
+			"isStronglyConnected" -> "Boolean",
+			"connectedComponents" -> "Object[]",
+			"connectedSubgraphs" -> "Graph[]",
+			"numberConnectedComponents" -> "Integer",
+			"nodeConnectedComponent" -> "Object[]",
+			"stronglyConnectedComponents" -> "Object[]",
+			"stronglyConnectedSubgraphs" -> "Graph[]",
+			"isDAG" -> "Boolean",
+			"topologicalSort" -> "Object[]",
+			"getMST" -> "Graph"
+		}
+	}
+
 	def CharSequence compileJava(Resource resource) '''
 		import java.io.File;
 		import java.io.FileInputStream;
@@ -3259,40 +3296,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 							return "Integer"
 						}
 					} else if (type.equals("graph")) { // TODO check graph method types
-						switch (exp.feature) {
-							case "nodeDegree": return "Integer"
-							case "nodeInDegree": return "Integer"
-							case "nodeOutDegree": return "Integer"
-							case "neighbourhood": return "Object[]"
-							case "nodeInEdges": return "Object[]"
-							case "nodeOutEdges": return "Object[]"
-							case "nodeSet": return "Object[]"
-							case "numNodes": return "Integer"
-							case "hasNode": return "Boolean"
-							case "getEdge": return "Object"
-							case "edgeSet": return "Object[]"
-							case "numEdges": return "Integer"
-							case "getEdgeWeight": return "Double"
-							case "hasEdge": return "Boolean"
-							case "bfsEdges": return "Object[]"
-							case "bfsNodes": return "Object[]"
-							case "bfsTree": return "Graph"
-							case "dfsEdges": return "Object[]"
-							case "dfsNodes": return "Object[]"
-							case "dfsTree": return "Graph"
-							case "isConnected": return "Boolean"
-							case "isStronglyConnected": return "Boolean"
-							case "connectedComponents": return "Object[]"
-							case "connectedSubgraphs": return "Graph[]"
-							case "numberConnectedComponents": return "Integer"
-							case "nodeConnectedComponent": return "Object[]"
-							case "stronglyConnectedComponents": return "Object[]"
-							case "stronglyConnectedSubgraphs": return "Graph[]"
-							case "isDAG": return "Boolean"
-							case "topologicalSort": return "Object[]"
-							case "getMST": return "Graph"
-							default: return "Object"
-						}
+						return graphMethodsReturnTypes.getOrDefault(exp.feature, "Object")
 					}
 				} else if (exp.feature.equals("split")) {
 					return "String[]"
