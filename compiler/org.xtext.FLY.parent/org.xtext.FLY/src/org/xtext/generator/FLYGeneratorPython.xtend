@@ -1427,25 +1427,26 @@ class FLYGeneratorPython extends AbstractGenerator {
 	"version: '3.7'
 	
 	services:
-	 localstack:
-	   image: localstack/localstack:0.9.6
-	   ports:
-	     - '4563-4599:4563-4599'
-	     - '\${PORT_WEB_UI-8080}:\${PORT_WEB_UI-8080}'
-	   environment:
-	     - SERVICES=\${SERVICES- s3, sqs, lambda, iam, cloudwatch, logs}
-	     - DEBUG=\${DEBUG- 1}
-	     - DATA_DIR=\${DATA_DIR- }
-	     - PORT_WEB_UI=\${PORT_WEB_UI- }
-	     - LAMBDA_EXECUTOR=\${LAMBDA_EXECUTOR- docker}
-	     - KINESIS_ERROR_PROBABILITY=\${KINESIS_ERROR_PROBABILITY- }
-	     - DOCKER_HOST=unix:///var/run/docker.sock
-	     - HOSTNAME=192.168.0.1
-	     - HOSTNAME_EXTERNAL=192.168.0.1
-	     - LOCALSTACK_HOSTNAME=192.168.0.1
-	   volumes:
-	     - '\${TMPDIR:-/tmp/localstack}:/tmp/localstack'
-	     - '/var/run/docker.sock:/var/run/docker.sock'
+	  localstack:
+	    image: localstack/localstack:0.9.6
+	    ports:
+	      - '4563-4599:4563-4599'
+	      - '\${PORT_WEB_UI-8080}:\${PORT_WEB_UI-8080}'
+	    environment:
+	      - SERVICES=\${SERVICES- s3, sqs, lambda, iam, cloudwatch, logs}
+	      - DEBUG=\${DEBUG- 1}
+	      - DATA_DIR=\${DATA_DIR- }
+	      - PORT_WEB_UI=\${PORT_WEB_UI- }
+	      - LAMBDA_EXECUTOR=\${LAMBDA_EXECUTOR- docker}
+	      - KINESIS_ERROR_PROBABILITY=\${KINESIS_ERROR_PROBABILITY- }
+	      - DOCKER_HOST=unix:///var/run/docker.sock
+	      - HOSTNAME=192.168.0.1
+	      - HOSTNAME_EXTERNAL=192.168.0.1
+	      - LOCALSTACK_HOSTNAME=192.168.0.1
+	    volumes:
+	      - '/var/run/docker.sock:/var/run/docker.sock'
+	    tmpfs:
+	      - /tmp/aws_debug
 	" > docker-compose.yml
 	
 	docker-compose up
