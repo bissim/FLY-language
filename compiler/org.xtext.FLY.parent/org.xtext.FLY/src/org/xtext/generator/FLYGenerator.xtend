@@ -2731,14 +2731,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 					typeSystem.get(scope).put((indexes.indices.get(0) as VariableDeclaration).name,name);
 					return '''
 						for(int _«name»=0; _«name»<((Table) «name»).rowCount();_«name»++){
-							
-							«IF body instanceof BlockExpression»
-								«FOR exp : body.expressions »
-									«generateExpression(exp,scope)»
-								«ENDFOR»
-							«ELSE»
-								«generateExpression(body,scope)»
-							«ENDIF»
+							«generateForBodyExpression(body, scope)»
 						}
 					'''	
 				}
@@ -2749,13 +2742,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 							HashMap<Object, Object> «(indexes.indices.get(0) as VariableDeclaration).name» = new HashMap<Object,Object>();
 							«(indexes.indices.get(0) as VariableDeclaration).name».put("k",_«(indexes.indices.get(0) as VariableDeclaration).name»);
 							«(indexes.indices.get(0) as VariableDeclaration).name».put("v",((HashMap<Object,Object>) «((object as CastExpression).target as VariableLiteral).variable.name»).get(_«(indexes.indices.get(0) as VariableDeclaration).name»));
-						«IF body instanceof BlockExpression»
-							«FOR exp : body.expressions »
-								«generateExpression(exp,scope)»
-							«ENDFOR»
-						«ELSE»
-							«generateExpression(body,scope)»
-						«ENDIF»
+						«generateForBodyExpression(body, scope)»
 					}
 				'''
 				}
@@ -2779,13 +2766,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 						HashMap<Object, Object> «(indexes.indices.get(0) as VariableDeclaration).name» = new HashMap<Object,Object>();
 						«(indexes.indices.get(0) as VariableDeclaration).name».put("k",_«(indexes.indices.get(0) as VariableDeclaration).name»);
 						«(indexes.indices.get(0) as VariableDeclaration).name».put("v",«(object as VariableLiteral).variable.name».get(_«(indexes.indices.get(0) as VariableDeclaration).name»));
-						«IF body instanceof BlockExpression»
-							«FOR exp : body.expressions »
-								«generateExpression(exp,scope)»
-							«ENDFOR»
-						«ELSE»
-							«generateExpression(body,scope)»
-						«ENDIF»
+						«generateForBodyExpression(body, scope)»
 					}
 				'''
 			} else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("File")){
@@ -2797,13 +2778,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 						Scanner __scanner_«name» = new Scanner(«name»);
 						while(__scanner_«name».hasNextLine()){
 							String «index_name» = __scanner_«name».nextLine();
-							«IF body instanceof BlockExpression»
-								«FOR exp : body.expressions »
-									«generateExpression(exp,scope)»
-								«ENDFOR»
-							«ELSE»
-								«generateExpression(body,scope)»
-							«ENDIF»
+							«generateForBodyExpression(body, scope)»
 						}
 						__scanner_«name».close();
 					'''
@@ -2811,25 +2786,13 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 					return '''
 						for (String __«(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name».list()) {
 							String «(indexes.indices.get(0) as VariableDeclaration).name» = «(object as VariableLiteral).variable.name».getAbsolutePath()+"/"+ __«(indexes.indices.get(0) as VariableDeclaration).name»;
-							«IF body instanceof BlockExpression»
-								«FOR exp : body.expressions »
-									«generateExpression(exp,scope)»
-								«ENDFOR»
-							«ELSE»
-								«generateExpression(body,scope)»
-							«ENDIF»
+							«generateForBodyExpression(body, scope)»
 						}
 					'''
 				}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("String[]")){
 					return '''
 						for (String «(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name») {
-							«IF body instanceof BlockExpression»
-								«FOR exp : body.expressions »
-									«generateExpression(exp,scope)»
-								«ENDFOR»
-							«ELSE»
-								«generateExpression(body,scope)»
-							«ENDIF»
+							«generateForBodyExpression(body, scope)»
 						}
 					'''
 				}else if (typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("Table")){
@@ -2838,13 +2801,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 				typeSystem.get(scope).put(index_name,name); 
 					return '''
 						for(int _«name»=0; _«name»< «name».rowCount();_«name»++){
-							«IF body instanceof BlockExpression»
-								«FOR exp : body.expressions »
-									«generateExpression(exp,scope)»
-								«ENDFOR»
-							«ELSE»
-								«generateExpression(body,scope)»
-							«ENDIF»
+							«generateForBodyExpression(body, scope)»
 						}
 					'''
 				}
@@ -2859,13 +2816,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 				return  '''
 				for(int «index_row»=0;«index_row»<«name».length;«index_row»++){
 					for(int «index_col»=0;«index_col»<«name»[0].length;«index_col»++){
-						«IF body instanceof BlockExpression»
-							«FOR exp : body.expressions »
-								«generateExpression(exp,scope)»
-							«ENDFOR»
-						«ELSE»
-							«generateExpression(body,scope)»
-						«ENDIF»
+						«generateForBodyExpression(body, scope)»
 					}
 				}
 				'''
@@ -2874,17 +2825,20 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 			return '''
 			«generateVariableFunction(object as VariableFunction,false,scope)»
 			for(HashMap<String,Object> «(indexes.indices.get(0) as VariableDeclaration).name» : __«(object as VariableFunction).target.name»_rows.values()){
-				«IF body instanceof BlockExpression»
-					«FOR exp : body.expressions »
-						«generateExpression(exp,scope)»
-					«ENDFOR»
-				«ELSE»
-					«generateExpression(body,scope)»
-				«ENDIF»
+				«generateForBodyExpression(body, scope)»
 			}'''
 		} else if(object instanceof IndexObject){ // if  it's a sub-array or a sub-matrix
 			
 		} 
+	}
+
+	// TODO test
+	def generateForBodyExpression(Expression body, String scope) {
+		if (body instanceof BlockExpression) {
+			generateBlockExpression(body, scope)
+		} else {
+			generateExpression(body, scope)
+		}
 	}
 
 	def generateIfExpression(IfExpression expression, String scope) {
