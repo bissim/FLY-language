@@ -107,15 +107,12 @@ class FLYGenerator extends AbstractGenerator {
 					switch type_env {
 						case "aws":{
 							language = ((element.environment.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s;
-							
 						}
 						case "aws-debug":{
 							language = ((element.environment.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s;
-							
 						}
 						case "azure":{
 							language = ((element.environment.right as DeclarationObject).features.get(6) as DeclarationFeature).value_s;
-							
 						}
 					}
 					
@@ -127,7 +124,6 @@ class FLYGenerator extends AbstractGenerator {
 				}
 			}
 		}
-		
 	}
 
 	def initializeGraphMethodsReturnTypes() {
@@ -281,7 +277,10 @@ class FLYGenerator extends AbstractGenerator {
 			«FOR element : (resource.allContents.toIterable.filter(Expression))»
 				«IF element instanceof VariableDeclaration»
 					«IF element.right instanceof DeclarationObject 
-						&& ( (element.right as DeclarationObject).features.get(0).value_s.equals("channel") || list_environment.contains((element.right as DeclarationObject).features.get(0).value_s) )»
+						&& (
+							(element.right as DeclarationObject).features.get(0).value_s.equals("channel") ||
+							list_environment.contains((element.right as DeclarationObject).features.get(0).value_s)
+						)»
 						«generateVariableDeclaration(element,"main")»
 					«ENDIF»
 				«ENDIF»
@@ -345,8 +344,8 @@ class FLYGenerator extends AbstractGenerator {
 				.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")].length > 0»
 					ExecutorService __thread_pool_deploy_on_cloud = Executors.newFixedThreadPool((int) __fly_environment.get("«resource.allContents.toIterable.filter(VariableDeclaration)
 					.filter[right instanceof DeclarationObject].filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s) 
-					&& ((right as DeclarationObject).features.get(0).value_s.equals("smp"))].get(0).name»").get("nthread"));	
-					ArrayList<Future<Object>> __termination_deploy_on_cloud = new ArrayList();		
+					&& ((right as DeclarationObject).features.get(0).value_s.equals("smp"))].get(0).name»").get("nthread"));
+					ArrayList<Future<Object>> __termination_deploy_on_cloud = new ArrayList();
 					«FOR element: resource.allContents.toIterable.filter(FlyFunctionCall)
 					.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
 						«deployFlyFunctionOnCloud(element)»
@@ -393,7 +392,7 @@ class FLYGenerator extends AbstractGenerator {
 				«ENDFOR»
 				System.exit(0);
 			}
-				
+
 			«FOR element : resource.allContents.toIterable.filter(FunctionDefinition)»
 				«IF checkBlock(element.eContainer)==false»
 					«generateFunctionDefinition(element)»
@@ -431,9 +430,7 @@ class FLYGenerator extends AbstractGenerator {
 				b.append("]}");
 				return b.toString();
 			}
-		
-		
-	}
+		}
 	'''
 
 	def undeployFlyFunctionOnCloud(FlyFunctionCall call) {
@@ -499,7 +496,6 @@ class FLYGenerator extends AbstractGenerator {
 					'''
 				}
 			}
-
 		}else
 			return ''''''
 	}
@@ -510,7 +506,7 @@ class FLYGenerator extends AbstractGenerator {
 //		println("Function to deploy: " + deployed_function)
 		if (!deployed_function.get(environment).contains(call.target.name)){
 			deployed_function.get(environment).add(call.target.name)
-			
+
 			if(environment.contains("aws")){
 				var user = (call.environment.right as DeclarationObject).features.get(1).value_s
 				var cred = call.environment.name
@@ -626,19 +622,20 @@ class FLYGenerator extends AbstractGenerator {
 	def generateSortExpression(SortExpression exp, String scope) {
 		return '''
 			ArrayList<Entry<Object,Object>> __sup = new ArrayList<Entry<Object,Object>>(«exp.target.name».entrySet());
-			Collections.sort(__sup, new Comparator<Entry<Object,Object>>() {
+			Collections.sort(
+				__sup,
+				new Comparator<Entry<Object,Object>>() {
+					public int compare(Entry<Object,Object> o1, Entry<Object,Object> o2) {
+						// TODO Auto-generated method stub
+						if(o1.getValue() instanceof Integer && o2.getValue() instanceof Integer)
+							return Integer.compare((Integer) o1.getValue(),(Integer) o2.getValue());
+						else if(o1.getValue() instanceof Double && o2.getValue() instanceof Double)
+							return Double.compare((Double) o1.getValue(), (Double) o2.getValue());
+						else return 0;
+					}
+				}
+			);
 			
-						public int compare(Entry<Object,Object> o1, Entry<Object,Object> o2) {
-							// TODO Auto-generated method stub
-							if(o1.getValue() instanceof Integer && o2.getValue() instanceof Integer)
-								return Integer.compare((Integer) o1.getValue(),(Integer) o2.getValue());
-							else if(o1.getValue() instanceof Double && o2.getValue() instanceof Double)
-								return Double.compare((Double) o1.getValue(), (Double) o2.getValue());
-							else return 0;
-						}
-						
-					});
-					
 			«exp.target.name».clear();
 			
 			«IF exp.type.equals("desc")»
@@ -775,7 +772,6 @@ class FLYGenerator extends AbstractGenerator {
 								«ENDIF»
 							'''
 						}
-						
 					}
 					case "dataframe":{
 						var path = (dec.right as DeclarationObject).features.get(1).value_s
