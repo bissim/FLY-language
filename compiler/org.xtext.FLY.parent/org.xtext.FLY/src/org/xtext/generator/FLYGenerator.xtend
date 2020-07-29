@@ -512,7 +512,7 @@ class FLYGenerator extends AbstractGenerator {
 		def deployFlyFunctionOnCloud(FlyFunctionCall call) {
 			var environment = (call.environment.right as DeclarationObject).features.get(0).value_s
 			var env_name = call.environment.name
-			println(deployed_function)
+			println("Function to deploy: " + deployed_function)
 			if (!deployed_function.get(environment).contains(call.target.name)){
 				deployed_function.get(environment).add(call.target.name)
 				
@@ -659,8 +659,8 @@ class FLYGenerator extends AbstractGenerator {
 	// methods for Variable Declaration 
 	def generateVariableDeclaration(VariableDeclaration dec, String scope) {
 		if (dec.typeobject.equals('var')) { // var declaration
-			println(dec)
-			println(dec.right)
+//			println(dec)
+//			println(dec.right)
 			if (dec.right instanceof DeclarationObject){ 
 				var type = (dec.right as DeclarationObject).features.get(0).value_s
 				switch (type) {
@@ -1019,7 +1019,7 @@ class FLYGenerator extends AbstractGenerator {
 						}
 					}else if((((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") ){ 
 						typeSystem.get(scope).put(dec.name, valuateArithmeticExpression((dec.right as CastExpression),scope))
-						println( typeSystem.get(scope))
+						println("Local type system: " + typeSystem.get(scope))
 						return '''
 							«valuateArithmeticExpression((dec.right as CastExpression),scope)» «dec.name» = («valuateArithmeticExpression((dec.right as CastExpression),scope)») «((dec.right as CastExpression).target as ChannelReceive).target.name».take(); 
 						'''
@@ -1028,8 +1028,8 @@ class FLYGenerator extends AbstractGenerator {
 			
 				typeSystem.get(scope).put(dec.name,
 					valuateArithmeticExpression(dec.right as ArithmeticExpression, scope))
-				println(dec.name + " --- " + typeSystem.get(scope).get(dec.name));
-				println(typeSystem)
+				println("Expression " + dec.name + " typed " + typeSystem.get(scope).get(dec.name));
+//				println("Expression type system: " + typeSystem)
 				return '''«valuateArithmeticExpression(dec.right as ArithmeticExpression,scope)» «dec.name» = «generateArithmeticExpression(dec.right as ArithmeticExpression,scope)»;'''
 			}
 		}
@@ -1552,7 +1552,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 		}else if (expression instanceof VariableLiteral) {
 			return '''«expression.variable.name»'''
 		} else if (expression instanceof NameObject) {
-			println(expression)
+			println("Name object expression: " + expression)
 			if(expression.name instanceof VariableDeclaration && expression.name.right!=null && expression.name.right instanceof CastExpression){
 				if((expression.name.right as CastExpression).type.equals("Object")){
 					return '''«expression.name.name».get("«expression.value»")'''
@@ -1794,7 +1794,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 				}
 				case "channel":{
 					if(expression.feature.equals("close")){
-						println("channel on "+((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s)
+						println("channel on " + ((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s)
 						return '''
 							«IF !((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") »
 								__wait_on_«expression.target.name» = false;
@@ -2753,7 +2753,8 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 				}
 			'''
 		} else if (object instanceof VariableLiteral) { // FIXME type is null if object is an inner for variable
-			println("for :" +(object as VariableLiteral).variable.name)
+			println("Iterating over " + (object as VariableLiteral).variable.name + " of type " + (object as VariableLiteral).variable.typeobject)
+			println("Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " of type " + (indexes.indices.get(0) as VariableDeclaration).typeobject)
 			if (((object as VariableLiteral).variable.typeobject.equals('var') &&
 				((object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
 				typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("HashMap")) {
@@ -3030,10 +3031,10 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 				}
 				
 		'''
-		println("generate function "+ definition.name)
-		println("typesystem :")
-		println (typeSystem.get(definition.name))
-		println(definition.name)
+//		println("generate function "+ definition.name)
+//		println("TypeSystem:")
+//		println(typeSystem.get(definition.name))
+//		println("Definition: " + definition.name)
 		if (definition.body.expressions.filter(NativeExpression).length !=0)
 			return ''''''
 		return s
@@ -3042,12 +3043,12 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 	
 
 	def getParameterType(String name, Expression param, int pos) {
-		println("getParameterType "+name+ " params "+ param+ "pos "+ pos)
+		println("getParameterType " + name + " params " + param + " pos " + pos)
 		for (exp : res.allContents.toIterable.filter(Expression)) {
 			if (exp instanceof LocalFunctionCall && ((exp as LocalFunctionCall).target.name == name)) {
 				var typeobject = valuateArithmeticExpression(
 					((exp as LocalFunctionCall).input as LocalFunctionInput).inputs.get(pos), "main")
-				println("params: "+param+" ----- type object "+ typeobject)
+				println("params: " + param + " ----- type object " + typeobject)
 				if (typeobject == "Table") {
 					(param as VariableDeclaration).typeobject = "dat"
 					typeSystem.get(name).put((param as VariableDeclaration).name, "Table");
@@ -3161,7 +3162,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 	}
 
 	def String valuateArithmeticExpression(ArithmeticExpression exp, String scope) {
-		println(typeSystem.get(scope))
+//		println("Arithmetic expression type: " + typeSystem.get(scope))
 		if (exp instanceof NumberLiteral) {
 			return "Integer"
 		} else if (exp instanceof BooleanLiteral) {
