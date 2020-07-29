@@ -1148,14 +1148,13 @@ class FLYGenerator extends AbstractGenerator {
 					}
 
 				}
-			} else if(dec.right instanceof ArithmeticExpression){
-				typeSystem.get(scope).put(
-					dec.name,
-					valuateArithmeticExpression(dec.right as ArithmeticExpression, scope)
-				)
-				//println(dec.name + " --- " + typeSystem.get(scope).get(dec.name));
-				return '''static «valuateArithmeticExpression(dec.right as ArithmeticExpression,scope)» «dec.name» = «generateArithmeticExpression(dec.right as ArithmeticExpression,scope)»;'''
-
+		} else if(dec.right instanceof ArithmeticExpression){
+			typeSystem.get(scope).put(
+				dec.name,
+				valuateArithmeticExpression(dec.right as ArithmeticExpression, scope)
+			)
+			//println(dec.name + " --- " + typeSystem.get(scope).get(dec.name));
+			return '''static «valuateArithmeticExpression(dec.right as ArithmeticExpression,scope)» «dec.name» = «generateArithmeticExpression(dec.right as ArithmeticExpression,scope)»;'''
 		}
 	}
 
