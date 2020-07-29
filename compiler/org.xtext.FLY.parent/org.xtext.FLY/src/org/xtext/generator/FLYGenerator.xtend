@@ -2515,7 +2515,7 @@ class FLYGenerator extends AbstractGenerator {
 				call.input.f_index instanceof VariableLiteral &&
 				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("Table")
 			) {
-				 ret+='''
+				ret+='''
 					int __num_row_«call.target.name»_«func_ID»=«(call.input.f_index as VariableLiteral).variable.name».rowCount();
 					int __initial_«call.target.name»_«func_ID»=0;
 					int __num_proc_«call.target.name»_«func_ID» = (int) __fly_environment.get("«cred»").get("nthread");
@@ -2712,6 +2712,7 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	def generateFor(ForIndex indexes, ArithmeticExpression object, Expression body, String scope) {
+		(indexes.indices.get(0) as VariableDeclaration).typeobject = 'var'
 		if (object instanceof CastExpression) {
 			if ((object as CastExpression).type.equals("Dat")) { // dat
 				var name = ((object as CastExpression).target as VariableLiteral).variable.name
@@ -2746,9 +2747,12 @@ class FLYGenerator extends AbstractGenerator {
 		} else if (object instanceof VariableLiteral) { // FIXME type is null if object is an inner for variable
 			println("Iterating over " + (object as VariableLiteral).variable.name + " of type " + (object as VariableLiteral).variable.typeobject)
 			println("Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " of type " + (indexes.indices.get(0) as VariableDeclaration).typeobject)
-			if (((object as VariableLiteral).variable.typeobject.equals('var') &&
+			if (typeSystem.get(scope).get((object as VariableLiteral).variable.name) === null) {
+				println("BEWARE! Variable " + (object as VariableLiteral).variable.name + " type is 'null'!")
+				return ''''''
+			} else if ((((object as VariableLiteral).variable.typeobject.equals('var') &&
 				((object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
-				typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("HashMap")) {
+				typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("HashMap"))) {
 				return '''
 
 					for(Object _«(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name».keySet() ){
@@ -2780,7 +2784,7 @@ class FLYGenerator extends AbstractGenerator {
 				'''
 			}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("[]")){
 				return '''
-					for (String «(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name») {
+					for (Object «(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name») {
 						«generateForBodyExpression(body, scope)»
 					}
 				'''
@@ -2809,7 +2813,7 @@ class FLYGenerator extends AbstractGenerator {
 				}
 				'''
 			}
-		} else if (object instanceof VariableFunction) {
+		} else if (object instanceof VariableFunction) { // di che tipo è il target della variable function
 			val function = object as VariableFunction
 			val targetType = typeSystem.get(scope).get(function.target.name)
 			if (targetType.contains("Graph")) {
