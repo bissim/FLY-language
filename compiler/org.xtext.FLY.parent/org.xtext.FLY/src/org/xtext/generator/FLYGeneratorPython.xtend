@@ -767,7 +767,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 				'''
 			} else if (exp.object instanceof VariableLiteral) {
 				println("Variable: "+ (exp.object as VariableLiteral).variable.name +" type: "+ typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name))
-				if (((exp.object as VariableLiteral).variable.typeobject.equals('var') &&
+				if (typeSystem.get(scope).get(variable.name) === null) {
+					println("BEWARE! Variable " + (exp.object as VariableLiteral).variable.name + " type is null!")
+					return ''''''
+				} else if ((((exp.object as VariableLiteral).variable.typeobject.equals('var') &&
 					((exp.object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
 					typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("HashMap")) {
 					val variableName = (exp.index.indices.get(0) as VariableDeclaration).name
@@ -1011,7 +1014,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 			return "Double"
 		} else if (exp instanceof VariableLiteral) { // TODO  fix with the current grammar
 			val variable = exp.variable
-			if (variable.typeobject.equals("dat")) {
+			if (variable.typeobject === null) {
+				println("(Python generator) BEWARE! Variable " + exp.variable.name + " type is null!")
+			} else if (variable.typeobject.equals("dat")) {
 				return "Table"
 			} else if (variable.typeobject.equals("channel")) {
 				return "Channel"
