@@ -67,7 +67,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	String user = null
 	Resource resourceInput
 	boolean isLocal
-	boolean isAsync 
+	boolean isAsync
 	String env_name=""
 	var list_environment = new ArrayList<String>(Arrays.asList("smp","aws","aws-debug","azure"));
 	ArrayList listParams = null
@@ -87,7 +87,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			language = (environment.right as DeclarationObject).features.get(5).value_s
 			nthread = (environment.right as DeclarationObject).features.get(6).value_t
 			memory = (environment.right as DeclarationObject).features.get(7).value_t
-			timeout = (environment.right as DeclarationObject).features.get(8).value_t					
+			timeout = (environment.right as DeclarationObject).features.get(8).value_t
 		} else {
 			env = "smp"
 			language = (environment.right as DeclarationObject).features.get(2).value_s
@@ -121,7 +121,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 		saveToRequirements(allReqs, fsa)
 		println("Root name: " + root.name)
 		if (isLocal) {
-			fsa.generateFile(root.name + ".py", input.compilePython(root.name, true))	
+			fsa.generateFile(root.name + ".py", input.compilePython(root.name, true))
 		}else {
 			if(env.equals("aws-debug"))
 				fsa.generateFile("docker-compose-script.sh",input.compileDockerCompose())
@@ -129,37 +129,36 @@ class FLYGeneratorPython extends AbstractGenerator {
 			fsa.generateFile(root.name +"_"+ env_name + "_undeploy.sh", input.compileScriptUndeploy(root.name, false))
 		}
 	}
-	
+
 	def channelsNames(BlockExpression exps) {
 
-		var names = new HashSet<String>();		
+		var names = new HashSet<String>();
 		val chRecvs = resourceInput.allContents
 				.filter[it instanceof ChannelReceive]
 				.filter[functionContainer(it) === root.name]
-				.filter[((it as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.contains("aws")] 
+				.filter[((it as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.contains("aws")]
 				.map[it as ChannelReceive]
 				.map[it.target as VariableDeclaration]
-				
 				.map[it.name]
+
 		val chSends = resourceInput.allContents
 				.filter[it instanceof ChannelSend]
 				.filter[functionContainer(it) === root.name]
-				.filter[((it as ChannelSend).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.contains("aws")] 
+				.filter[((it as ChannelSend).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.contains("aws")]
 				.map[it as ChannelSend]
 				.map[it.target as VariableDeclaration]
 				.map[it.name]
-				
+
 		while(chRecvs.hasNext()) {
 			names.add(chRecvs.next())
 		}
 		while(chSends.hasNext()) {
 			names.add(chSends.next())
 		}
-		
+
 		return names.toArray()
 	}
-	
-		
+
 	def functionContainer(EObject e) {
 		var parent = e.eContainer
 		if (parent === null) {
@@ -170,14 +169,14 @@ class FLYGeneratorPython extends AbstractGenerator {
 			return functionContainer(parent)
 		}
 	}
-	
+
 	def saveToRequirements(String[] requirements, IFileSystemAccess fsa) {
 		var res = "";
 		for (s: requirements) {
 			res += s + "\n"
 		}
 		fsa.generateFile("requirements.txt", res)
-	} 
+	}
 
 	def paramsName(List<Expression> expressions) {
 			val tmp = new ArrayList()
@@ -185,7 +184,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 				tmp.add((e as VariableDeclaration).name)
 				//println("sdasds "+ (e as VariableDeclaration).name)
 			}
-				
+
 
 			return tmp
 	}
@@ -198,23 +197,23 @@ class FLYGeneratorPython extends AbstractGenerator {
 		import math
 		import pandas as pd
 		import json
-		
+
 		import socket
 		import sys
-		
-		
+
+
 		__sock_loc = socket.socket() # TODO
 		__sock_loc.connect(('', 9090))
-		
+
 		«FOR chName : channelNames»
 			«chName» = __sock_loc.makefile('rwb')
 		«ENDFOR»
-		
+
 		«FOR fd:functionCalled.values()»
 			«generatePyExpression(fd, name, local)»
-			
-		«ENDFOR»	
-		
+
+		«ENDFOR»
+
 		def main(event):
 			«FOR exp : parameters»
 				«IF typeSystem.get(name).get((exp as VariableDeclaration).name).equals("Table") »
@@ -229,24 +228,22 @@ class FLYGeneratorPython extends AbstractGenerator {
 				«generatePyExpression(exp,name, local)»
 			«ENDFOR»
 			__sock_loc.close()
-		
+
 		if __name__ == "__main__":
-		
+
 			__sock_data = socket.socket()
 			__sock_data.connect(('', 9091))
 			__sock_data_fh = __sock_data.makefile('rb')
 			main(__sock_data_fh.readline())
 		'''
 	}
-	
-	
 
 	def generateBodyPy(BlockExpression exps, List<Expression> parameters, String name, String env, boolean local) {
 		//println("generaty python body "+name)
 		//println(typeSystem.get(name))
 		val channelNames = channelsNames(exps)
 		listParams = paramsName(parameters)
-		
+
 		'''
 			# python
 			import os
@@ -262,8 +259,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«IF allReqs.contains("networkx")»
 			from fly.graph import Graph
 			«ENDIF»
-			
-			«IF env.contains("aws")»				
+
+			«IF env.contains("aws")»
 			import boto3
 			«IF env.equals("aws")»
 				sqs = boto3.resource('sqs')
@@ -276,11 +273,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«ENDFOR»
 			«ELSEIF env == "azure"»
 			import azure.functions as func
-			from azure.storage.queue import QueueService 
+			from azure.storage.queue import QueueService
 			from azure.storage.queue.models import QueueMessageFormat
 			«ENDIF»
-			
-			«IF env.contains("aws") »			
+
+			«IF env.contains("aws") »
 			def handler(event,context):
 				__environment = 'aws'
 				id_func=event['id']
@@ -317,7 +314,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 				«FOR exp : exps.expressions»
 					«generatePyExpression(exp,name, local)»
 				«ENDFOR»
-				«IF env.contains("aws") »			
+				«IF env.contains("aws") »
 					__syncTermination = sqs.get_queue_by_name(QueueName='termination-"${function}"-"${id}"-'+str(id_func))
 					__syncTermination.send_message(MessageBody=json.dumps('terminate'))
 				«ELSEIF env == "azure"»
@@ -327,14 +324,14 @@ class FLYGeneratorPython extends AbstractGenerator {
 	}
 
 	def generatePyExpression(Expression exp, String scope, boolean local) {
-		
+
 		var s = ''''''
 		if (exp instanceof ChannelSend) {
 			var env = (exp.target.environment.get(0).right as DeclarationObject).features.get(0).value_s ;//(exp.target as DeclarationObject).features.get(0).value_s;
-			s += '''			
+			s += '''
 			«IF local»
 				«exp.target.name».write(json.dumps(«generatePyArithmeticExpression(exp.expression, scope, local)»).encode('utf8'))
-				
+
 			«ELSEIF (env.contains("aws"))»
 				«IF exp.expression instanceof VariableLiteral && typeSystem.get(scope).get((exp.expression as VariableLiteral).variable.name).contains("Matrix") »
 					«IF listParams.contains((exp.expression as VariableLiteral).variable.name)»
@@ -344,7 +341,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 							__«(exp.expression as VariableLiteral).variable.name»_matrix['values'][__index]= «(exp.expression as VariableLiteral).variable.name»[__i*__«(exp.expression as VariableLiteral).variable.name»_cols+__j]
 							__index+=1
 					«ELSE»
-					
+
 					«ENDIF»
 					«exp.target.name».send_message(
 						MessageBody=json.dumps(__«(exp.expression as VariableLiteral).variable.name»_matrix)
@@ -384,7 +381,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 				} else if (exp.right instanceof ArrayDefinition) {
 					val type = (exp.right as ArrayDefinition).type
-					
+
 					if((exp.right as ArrayDefinition).indexes.length==1){
 						var len = (exp.right as ArrayDefinition).indexes.get(0).value
 						typeSystem.get(scope).put(exp.name, "Array_"+type)
@@ -407,11 +404,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 						«exp.name» = [None] * «generatePyArithmeticExpression(row, scope, local)» * «generatePyArithmeticExpression(col, scope, local)» *«generatePyArithmeticExpression(dep, scope, local)»
 						'''
 					}
-					
-				} 
+
+				}
 				else if(exp.right instanceof DeclarationObject){
 					var type = (exp.right as DeclarationObject).features.get(0).value_s
-					
+
 					switch (type) {
 						case "dataframe": {
 							typeSystem.get(scope).put(exp.name, "Table")
@@ -425,10 +422,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 							var sep = (exp.right as DeclarationObject).features.get(2).value_s
 							//path = path.replaceAll('"', '');
 							var uri = '''«IF (exp as VariableDeclaration).onCloud && ! (path.contains("https://")) »«IF env == "aws"»https://s3.us-east-2.amazonaws.com«ELSEIF env=="aws-debug"»http://192.168.0.1:4572«ELSEIF env=="azure"»https://"${storageName}".blob.core.windows.net«ENDIF»/bucket-"${id}"/«path»«ELSE»«path»«ENDIF»'''
-		
+
 							s += '''
 								«exp.name» = pd.read_csv('«uri»', sep='«sep»')
-							'''		
+							'''
 						}
 						case "file":{
 							typeSystem.get(scope).put(exp.name, "File")
@@ -494,14 +491,13 @@ class FLYGeneratorPython extends AbstractGenerator {
 							return ''''''
 						}
 					}
-				} else { 
+				} else {
 					typeSystem.get(scope).put(exp.name, valuateArithmeticExpression(exp.right as ArithmeticExpression,scope,local))
 					s += '''
 						«exp.name» = «generatePyArithmeticExpression(exp.right as ArithmeticExpression, scope, local)»
 					'''
 				}
-
-			} 
+			}
 		} else if (exp instanceof LocalFunctionCall) {
 			val fc = (exp as LocalFunctionCall)
 			val fd = (fc.target as FunctionDefinition)
@@ -513,7 +509,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			val name = fd.name
 			val params = fd.parameters.map[it as VariableDeclaration].map[it.name]
 			val body = fd.body as BlockExpression
-			
+
 			s += '''
 				def «name»(«String.join(", ", params)»):
 					«generatePyBlockExpression(body, scope, local)»
@@ -564,12 +560,12 @@ class FLYGeneratorPython extends AbstractGenerator {
 			s += '''return «generatePyArithmeticExpression(fr.expression, scope, local)»'''
 		} else if (exp instanceof PostfixOperation) {
 			var postfixOp = ""
-			switch(exp.feature) { 
+			switch(exp.feature) {
 				case "++": postfixOp = "+=1"
 				case "--": postfixOp = "-=1"
 			}
 			s +='''«generatePyArithmeticExpression(exp.variable, scope, local)»«postfixOp»'''
-			
+
 		} else if (exp instanceof NativeExpression){
 			s +='''«generateNativeEpression(exp,scope,local)»'''
 		} else if (exp instanceof VariableFunction) {
@@ -578,7 +574,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 		return s
 	}
-	
+
 	def generateNativeEpression(NativeExpression expression, String string, boolean b) {
 		var code_lst = expression.code;
 		var code_lst_split = code_lst.split("\n");
@@ -602,7 +598,6 @@ class FLYGeneratorPython extends AbstractGenerator {
 		var ret_str = str.toString.replace("\"","'")
 		return ret_str
 	}
-	
 
 	def generatePyAssignmentExpression(Assignment assignment, String scope, boolean local) {
 		if (assignment.feature !== null) {
@@ -620,7 +615,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 						«IF local»
 						«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» int(«channel.name».readline())
 						«ELSE»
-						«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» int(«channel.name».receive_messages()[0]) 
+						«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» int(«channel.name».receive_messages()[0])
 						«ENDIF»
 						'''
 					} else if ((assignment.value as CastExpression).type.equals("Double")) {
@@ -629,12 +624,12 @@ class FLYGeneratorPython extends AbstractGenerator {
 						«IF local»
 						«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» float(«channel.name».readline())
 						«ELSE»
-						«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» float(«channel.name».receive_messages()[0])							
+						«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» float(«channel.name».receive_messages()[0])
 						«ENDIF»
 						'''
 					}
 				} else if ((((assignment.value as CastExpression).target as ChannelReceive).target.environment.get(0).
-					right as DeclarationObject).features.get(0).value_s.equals("azure")) { 
+					right as DeclarationObject).features.get(0).value_s.equals("azure")) {
 					// And we are on other environments
 					if ((assignment.value as CastExpression).type.equals("Integer")) {
 						return '''
@@ -667,7 +662,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 				val channel = (((assignment.value as CastExpression).target as ChannelReceive).target) as VariableDeclaration
 				// If it is an assignment of type Channel receive
 				if (((assignment.value as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.
-					get(0).value_s.equals("aws")) { 
+					get(0).value_s.equals("aws")) {
 					// And we are on AWS
 					return '''
 					«IF local»
@@ -686,7 +681,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 					«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» __msg.content
 					__queue_service.delete_message('«channel.name»-"${id}"',__msg.id, __msg.pop_receipt)
 					«ENDIF»
-					'''	
+					'''
 					}
 				else { // other environments
 					return '''
@@ -695,11 +690,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 				}
 			} else {
 				return '''
-					«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» «generatePyArithmeticExpression(assignment.value, scope, local)» 
+					«generatePyArithmeticExpression(assignment.feature, scope, local)» «assignment.op» «generatePyArithmeticExpression(assignment.value, scope, local)»
 				'''
 			}
 		}
-		
+
 		if (assignment.feature_obj !== null) {
 			if (assignment.feature_obj instanceof NameObject) {
 				typeSystem.get(scope).put(
@@ -707,7 +702,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 						(assignment.feature_obj as NameObject).value,
 					valuateArithmeticExpression(assignment.value, scope, local))
 				return '''
-					«((assignment.feature_obj as NameObject).name as VariableDeclaration).name»['«(assignment.feature_obj as NameObject).value»'] = «generatePyArithmeticExpression(assignment.value, scope, local)» 
+					«((assignment.feature_obj as NameObject).name as VariableDeclaration).name»['«(assignment.feature_obj as NameObject).value»'] = «generatePyArithmeticExpression(assignment.value, scope, local)»
 				'''
 			}
 			if (assignment.feature_obj instanceof IndexObject) {
@@ -719,14 +714,12 @@ class FLYGeneratorPython extends AbstractGenerator {
 					if ((assignment.feature_obj as IndexObject).indexes.length == 2) {
 						var i = generatePyArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(0).value ,scope, local);
 						var j = generatePyArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(1).value ,scope, local);
-						
+
 						//var col = typeSystem.get(scope).get((assignment.feature_obj as IndexObject).name.name).split("_").get(2)
-						
+
 						return '''
 							«(assignment.feature_obj as IndexObject).name.name»[«i»*__«(assignment.feature_obj as IndexObject).name.name»_cols+«j»] = «generatePyArithmeticExpression(assignment.value, scope, local)»
 						'''
-						
-						
 					}
 				} else {
 					return '''
@@ -756,7 +749,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 					val variableName = (exp.index.indices.get(0) as VariableDeclaration).name
 					return '''
 						for «variableName»k, «variableName»v in «((exp.object as CastExpression).target as VariableLiteral).variable.name».items():
-							«(exp.index.indices.get(0) as VariableDeclaration).name» = {'k': «variableName»k, 'v': «variableName»v} 
+							«(exp.index.indices.get(0) as VariableDeclaration).name» = {'k': «variableName»k, 'v': «variableName»v}
 							«generatePyForBodyExpression(exp.body, scope, local)»
 					'''
 				}
@@ -768,7 +761,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 						«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			} else if (exp.object instanceof VariableLiteral) {
-				println("Variable: "+ (exp.object as VariableLiteral).variable.name +" type: "+ typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name)) 
+				println("Variable: "+ (exp.object as VariableLiteral).variable.name +" type: "+ typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name))
 				if (((exp.object as VariableLiteral).variable.typeobject.equals('var') &&
 					((exp.object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
 					typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("HashMap")) {
@@ -777,9 +770,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 						for «variableName»k, «variableName»v in «(exp.object as VariableLiteral).variable.name».items():
 							«(exp.index.indices.get(0) as VariableDeclaration).name» = {'k': «variableName»k, 'v': «variableName»v}
 							«generatePyForBodyExpression(exp.body, scope, local)»
-						
+
 					'''
-				} else if ((exp.object as VariableLiteral).variable.typeobject.equals('dat') || 
+				} else if ((exp.object as VariableLiteral).variable.typeobject.equals('dat') ||
 					typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("Table")
 					) {
 					return '''
@@ -828,7 +821,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 				'''
 			}
 		}
-		
+
 	}
 
 	// TODO test
@@ -867,9 +860,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 				} else if (leftTypeString) {
 					return '''«generatePyArithmeticExpression(exp.left, scope, local)» «exp.feature» str(«generatePyArithmeticExpression(exp.right, scope, local)»)'''
 				} else {
-					return '''str(«generatePyArithmeticExpression(exp.left, scope, local)») «exp.feature» «generatePyArithmeticExpression(exp.right, scope, local)»'''					
+					return '''str(«generatePyArithmeticExpression(exp.left, scope, local)») «exp.feature» «generatePyArithmeticExpression(exp.right, scope, local)»'''
 				}
-			} else 
+			} else
 				return '''«generatePyArithmeticExpression(exp.left, scope, local)» «exp.feature» «generatePyArithmeticExpression(exp.right, scope, local)»'''
 		} else if (exp instanceof UnaryOperation) {
 			return '''«exp.feature» «generatePyArithmeticExpression(exp.operand, scope, local)» '''
@@ -909,7 +902,6 @@ class FLYGeneratorPython extends AbstractGenerator {
 			}else{
 				return '''«(exp.name as VariableDeclaration).name»['«exp.value»']'''
 			}
-			
 		} else if (exp instanceof IndexObject) { //array
 			if (exp.indexes.length == 1) {
 				return '''«(exp.name as VariableDeclaration).name»[«generatePyArithmeticExpression(exp.indexes.get(0).value, scope, local)»]'''
@@ -918,13 +910,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 //				println("Expression: " + exp)
 				var i = generatePyArithmeticExpression(exp.indexes.get(0).value ,scope, local);
 				var j = generatePyArithmeticExpression(exp.indexes.get(1).value ,scope, local);
-			
+
 				var col = typeSystem.get(scope).get((exp.name as VariableDeclaration).name).split("_").get(2)
 				return '''
 					«(exp.name as VariableDeclaration).name»[(«i»*__«(exp.name as VariableDeclaration).name»_cols)+«j»]['value']
 				'''
-				
-				
 			} else { // matrix 3d
 				
 			}
@@ -950,7 +940,6 @@ class FLYGeneratorPython extends AbstractGenerator {
 				return'''
 				'''
 			}
-			
 		} else if (exp instanceof LocalFunctionCall) {
 			return generatePyExpression(exp as LocalFunctionCall, scope, local)
 		} else {
@@ -1003,7 +992,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			case "Dat": return '''pd.read_json(«generatePyArithmeticExpression(cast.target, scope, local)»)'''
 			case "Object": return '''«generatePyArithmeticExpression(cast.target, scope, local)»'''
 			case "Double": return '''float(«generatePyArithmeticExpression(cast.target, scope, local)»)'''
-		}	
+		}
 	}
 
 	def String valuateArithmeticExpression(ArithmeticExpression exp, String scope, boolean local) {
@@ -1041,8 +1030,6 @@ class FLYGeneratorPython extends AbstractGenerator {
 			} else {
 				return typeSystem.get(scope).get(exp.name.name + "[" + generatePyArithmeticExpression(exp.indexes.get(0).value, scope, local) + "]");
 			}
-			
-			
 		} else if (exp instanceof DatTableObject) {
 			return "Table"
 		}
@@ -1165,31 +1152,31 @@ class FLYGeneratorPython extends AbstractGenerator {
 			return "Object"
 		}
 	}
-	
+
 	def CharSequence compilePython(Resource resource, String name, boolean local) '''
 		«generateBodyPyLocal(root.body,root.parameters,name,env, local)»
 	'''
-	
+
 	def CharSequence compileScriptDeploy(Resource resource, String name, boolean local){
 		switch this.env {
 		   case "aws": AWSDeploy(resource,name,local,false)
 		   case "aws-debug": AWSDebugDeploy(resource,name,local,true)
 		   case "azure": AzureDeploy(resource,name,local)
 		   default: this.env+" not supported"
-  		}
-	} 	
-	
+		}
+	}
+
 	def CharSequence AWSDeploy(Resource resource, String name, boolean local, boolean debug)
 	'''
 	«val profile = if (debug) "dummy_fly_debug" else "${user}"»
 	«val endpoint = "http://localhost"»
 	#!/bin/bash
-	
+
 	if [[ $# -eq 0 ]]; then
 	    echo "No arguments supplied. ./aws_deploy.sh <user_profile> <function_name> <id_function_execution>"
 	    exit 1
 	fi
-	
+
 	echo "Checking whether aws-cli is installed"
 	which aws
 	if [[ $? -eq 0 ]]; then
@@ -1198,7 +1185,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	    echo "You need aws-cli to deploy this lambda. Google 'aws-cli install'"
 	    exit 1
 	fi
-	
+
 	# check installed Python version
 ««« TODO this may work for localstack versions more recent than 0.9.6
 	#PYVER="$(python3 -V | grep -Po "(\d+\.\d+)" | head -1)"
@@ -1208,7 +1195,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	#    echo "You need to install Python 2.7, 3.6, 3.7 or 3.8 on your local machine"
 	#    exit 1
 	#fi
-	
+
 	echo "Checking whether virtualenv is installed"
 	which virtualenv
 	if [[ $? -eq 0 ]]; then
@@ -1217,7 +1204,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	    echo "You need to install virtualenv. Google 'virtualenv install'"
 	    exit 1
 	fi
-	
+
 	«IF debug»
 	aws configure list --profile «profile»
 	if [[ $? -eq 0 ]]; then
@@ -1231,11 +1218,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 	    echo "dummy user created"
 	fi
 	«ENDIF»
-	
+
 	user=$1
 	function=$2
 	id=$3
-	
+
 	echo '{
 	    "Version": "2012-10-17",
 	    "Statement": [
@@ -1248,14 +1235,14 @@ class FLYGeneratorPython extends AbstractGenerator {
 	                "sqs:SendMessage",
 	                "sqs:*"
 	            ],
-	            "Resource": "*" 
+	            "Resource": "*"
 	        },
 	        {
 	            "Effect": "Allow",
 	            "Action": [
 	                "s3:*"
 	            ],
-	            "Resource": "*" 
+	            "Resource": "*"
 	        },
 	        {
 	            "Effect":"Allow",
@@ -1268,7 +1255,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	        }
 	    ]
 	}' > policyDocument.json
-	
+
 	echo '{
 	    "Version": "2012-10-17",
 	    "Statement": [
@@ -1277,34 +1264,34 @@ class FLYGeneratorPython extends AbstractGenerator {
 	            "Principal": {
 	                "Service": "lambda.amazonaws.com"
 	            },
-	            "Action": "sts:AssumeRole" 
+	            "Action": "sts:AssumeRole"
 	        }
 	    ]
 	}' > rolePolicyDocument.json
-	
+
 	# create role policy
 	echo "creation of role lambda-sqs-execution ..."
-	
-	role_arn=$(aws iam get-role --role-name lambda-sqs-execution --query 'Role.Arn' --profile «profile»«IF debug» --endpoint-url=«endpoint»:4593«ENDIF») 
-	
-	if [[ -z $role_arn ]]; then 
+
+	role_arn=$(aws iam get-role --role-name lambda-sqs-execution --query 'Role.Arn' --profile «profile»«IF debug» --endpoint-url=«endpoint»:4593«ENDIF»)
+
+	if [[ -z $role_arn ]]; then
 	    role_arn=$(aws iam create-role --role-name lambda-sqs-execution --assume-role-policy-document file://rolePolicyDocument.json --output json --query 'Role.Arn' --profile «profile»«IF debug» --endpoint-url=«endpoint»:4593«ENDIF»)
 	fi
-	
+
 	echo "role lambda-sqs-execution created at ARN "$role_arn
-	
+
 	aws iam put-role-policy --role-name lambda-sqs-execution --policy-name lambda-sqs-policy --policy-document file://policyDocument.json --profile «profile»«IF debug» --endpoint-url=http://localhost:4593«ENDIF»
 	aws logs create-log-group --log-group-name «IF debug»dummy_«ENDIF»fly_logs --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
 	aws logs create-log-stream --log-group-name «IF debug»dummy_«ENDIF»fly_logs --log-stream-name dummy_fly_log_stream --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
-	
-	
+
+
 	echo "Installing requirements"
-	
+
 	# create and enter virtual environment
 	virtualenv venv -p «language»
 	source venv/bin/activate
-	
-	
+
+
 	echo "Checking wheter PIP is installed"
 	which pip3
 	if [[ $? -eq 0 ]]; then
@@ -1313,7 +1300,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	    echo "You need to install PIP. Google 'pip install'"
 	    exit 1
 	fi
-	
+
 	#PIPVER="$(python3 -m pip -V | grep -Po "(\d+\.)+\d+" | grep -Po "\d+" | head -1)"
 	#if [[ ${PIPVER} -lt 19 ]]; then
 	#    echo "pip version is too old. installing new one"
@@ -1321,14 +1308,14 @@ class FLYGeneratorPython extends AbstractGenerator {
 	echo "Updating PIP..."
 	    python3 -m pip install --upgrade pip
 	#fi
-	
+
 	python3 -m pip install -r ./src-gen/requirements.txt
-	
+
 	echo
 	echo "add precompiled libraries"
 	cd venv/lib/«language»/site-packages/
 	«IF allReqs.contains("ortools")»
-	
+
 	echo "installing ortools"
 	rm -rf ortools*
 	wget -q https://files.pythonhosted.org/packages/64/13/8c8d0fe23da0767ec0f8d00ad14619a20bc6d55ca49a3bd13700e629a1be/ortools-6.10.6025-cp36-cp36m-manylinux1\_x86\_64.whl
@@ -1337,16 +1324,16 @@ class FLYGeneratorPython extends AbstractGenerator {
 	echo "ortools installed"
 	«ENDIF»
 	«IF allReqs.contains("pandas")»
-	
+
 	echo "installing pandas"
 	rm -rf pandas*
 	wget -q https://files.pythonhosted.org/packages/f9/e1/4a63ed31e1b1362d40ce845a5735c717a959bda992669468dae3420af2cd/pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl
 	unzip -q pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl
-	rm pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl 
+	rm pandas-0.24.0-cp36-cp36m-manylinux1\_x86\_64.whl
 	echo "pandas installed"
 	«ENDIF»
 	«IF allReqs.contains("numpy")»
-	
+
 	echo "installing numpy"
 	rm -rf numpy*
 	wget -q https://files.pythonhosted.org/packages/7b/74/54c5f9bb9bd4dae27a61ec1b39076a39d359b3fb7ba15da79ef23858a9d8/numpy-1.16.0-cp36-cp36m-manylinux1\_x86\_64.whl
@@ -1355,7 +1342,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	echo "numpy installed"
 	«ENDIF»
 	«IF allReqs.contains("networkx")»
-	
+
 	echo "installing networkx"
 	rm -rf networkx*
 	wget -q https://files.pythonhosted.org/packages/41/8f/dd6a8e85946def36e4f2c69c84219af0fa5e832b018c970e92f2ad337e45/networkx-2.4-py3-none-any.whl -O networkx.whl
@@ -1368,7 +1355,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	echo "networkx installed"
 	«ENDIF»
 	«IF allReqs.contains("fly_graph")»
-	
+
 	echo "installing FLY graph"
 	rm -rf fly*
 	wget -q https://github.com/bissim/FLY-graph/releases/download/0.0.1-dev%2B20200706/fly_graph-0.0.1.dev0+20200706-py3-none-any.whl -O fly_graph.whl
@@ -1376,35 +1363,35 @@ class FLYGeneratorPython extends AbstractGenerator {
 	rm fly_graph.whl
 	echo "FLY graph installed"
 	«ENDIF»
-	
+
 	echo
 	echo "creating zip package"
 	zip -q -r9 ../../../../${id}\_lambda.zip .
 	echo "zip created"
-	
+
 	cd ../../../../
-	
-	
+
+
 	# generate Python function script
 	echo "«generateBodyPy(root.body, root.parameters, name, env, local)»
-	
+
 	«FOR fd:functionCalled.values()»
-	
+
 	«generatePyExpression(fd, name, local)»
-	
+
 	«ENDFOR»
 	" > ${function}.py
-	
-	
+
+
 	zip -qg ${id}_lambda.zip ${function}.py
-	
+
 	# exit from virtual environment
 	deactivate
-	
-	
+
+
 	# create lambda function
 	echo "creation of the lambda function"
-	
+
 	echo "zip file too big, uploading it using s3"
 	echo "creating bucket for s3"
 	aws s3 mb s3://${function}${id}bucket --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
@@ -1413,9 +1400,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 	echo "file uploaded, creating function"
 	aws lambda create-function --function-name ${function}_${id} --code S3Bucket=""${function}""${id}"bucket",S3Key=""${id}"_lambda.zip" --handler ${function}.handler --runtime «language» --role ${role_arn//\"} --memory-size «memory» --timeout «timeout» --profile «profile»«IF debug» --endpoint-url=«endpoint»:4574«ENDIF»
 	echo "lambda function created"
-	
-	
-	# clear 
+
+
+	# clear
 	rm -r venv/
 	rm ${function}.py
 	rm ${id}_lambda.zip
@@ -1430,7 +1417,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	docker network create -d bridge --subnet 192.168.0.0/24 --gateway 192.168.0.1 mynet
 	echo \
 	"version: '3.7'
-	
+
 	services:
 	  localstack:
 	    image: localstack/localstack:0.9.6
@@ -1453,29 +1440,28 @@ class FLYGeneratorPython extends AbstractGenerator {
 	    tmpfs:
 	      - /tmp/aws_debug
 	" > docker-compose.yml
-	
+
 	docker-compose up
 	'''
-	
-	
+
 	def CharSequence AzureDeploy(Resource resource, String name, boolean local)
 	'''
 		#!/bin/bash
-		
+
 «««		#Check if script is running as sudo
 «««		if [[ $# -ne 6 ]]; then
 «««			echo "Error in number of parameters, run with:"
 «««			echo "<app-name> <function-name> <executionId> <clientId> <tenantId> <secret> <subscriptionId> <timeout> <storageName> <storageKey>"
 «««			exit 1
 «««		fi
-		
-					
+
+
 		if [ $# -ne 9 ]
 		  then
 		    echo "No arguments supplied. ./azure_deploy.sh <app-name> <function-name> <executionId> <clientId> <tenantId> <secret> <subscriptionId>  <storageName> <storageKey>"
 		    exit 1
 		fi
-		
+
 		app=$1
 		function=$2
 		id=$3
@@ -1485,61 +1471,59 @@ class FLYGeneratorPython extends AbstractGenerator {
 		subscription=$7
 		storageName=$8
 		storageKey=$9
-		
+
 		az login --service-principal -u ${user} -t ${tenant} -p ${secret}
-		
+
 		#Check if python is installed
 		if !(command -v python3 &>/dev/null) then
 			echo "Script require python 3.6"
 			exit 1;
 		fi
-		
+
 		#Check if Azure Functions Core Tools is installed
 		if !(command -v az &>/dev/null) then
 			echo "Script require Azure Functions Core Tools"
 			exit 1;
 		fi
-		
+
 		#Virtual environment
 		echo "Creating the virtual environment"
-		
+
 		if [ ! -d .env ]; then
-		
+
 			python3.6 -m venv .env
 		fi
-		
+
 		source .env/bin/activate
 		echo "Virtual environment has been created"
-		
+
 		#Local function's local project
 		echo "Creating function's local project"
-		
+
 		if [ ! -d ${app}${id} ]; then
 			func init ${app}${id} --worker-runtime=python --no-source-control -n
-					
+
 			cp ./src-gen/requirements.txt ./${app}${id}
-			
+
 			cd ${app}${id}
-			
-			
+
+
 			rm -f host.json
 			echo '{
 				"version": "2.0",
 				"functionTimeout": "«String.format("%02d:%02d:%02d",0,timeout/60,timeout%60)»"
 			}' > host.json;
-			
-			
 		else
 			cd ${app}${id}
 		fi
-		
+
 		echo "Function's local project has been created"
-		
+
 		mkdir ${function}
 		cd ${function}
-		
+
 		echo "Creating Function's files..."
-		
+
 		echo '{
 		  "scriptFile": "function.py",
 		  "bindings": [
@@ -1555,82 +1539,82 @@ class FLYGeneratorPython extends AbstractGenerator {
 		  ]
 		}' > function.json
 		echo "Function.json created"
-		
+
 		#Creating function's source file
 		echo "«generateBodyPy(root.body,root.parameters,name,env, local)»
-			
+
 			«FOR fd:functionCalled.values()»
-				
+
 			«generatePyExpression(fd, name, local)»
-			
+
 			«ENDFOR»
 			" > function.py
 		echo "Function.py created"
-		
+
 		echo "Function's files have been created"
-		
+
 		#Routine to deploy on Azure
 		cd ..
-		
+
 		echo "Deploying the function"
 		until func azure functionapp publish ${app}${id} --resource-group flyrg${id} --build-native-deps
 		do
 		    echo "Deploy attempt"
 		done
-				
+
 		az  logout
 		deactivate
 	'''
-	
+
 	def CharSequence AzureUndeploy(Resource resource, String string, boolean local)'''
 	'''
-	
+
 	def CharSequence AWSUndeploy(Resource resource, String string, boolean local,boolean debug)'''
 	#!/bin/bash
-					
+
 			if [ $# -eq 0 ]
 			  then
 			    echo "No arguments supplied. ./aws_deploy.sh <user_profile> <function_name> <id_function_execution>"
 			    exit 1
 			fi
-			
+
 			user=$1
 			function=$2
 			id=$3
-			
+
 			# delete user queue
 			«FOR res: resource.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].filter[(it.right as DeclarationObject).features.get(0).value_s.equals("channel")]
 			.filter[((it.environment.get(0) as VariableDeclaration).right as DeclarationObject).features.get(0).value_s.equals("aws")] »
 				#get «res.name»_${id} queue-url
-				
+
 				echo "get «res.name»-${id} queue-url"
 				queue_url=$(aws sqs --profile ${user} get-queue-url --queue-name «res.name»-${id} --query 'QueueUrl')
 				echo ${queue_url//\"}
-				
+
 				echo "delete queue at url ${queue_url//\"} "
 				aws sqs --profile ${user} delete-queue --queue-url ${queue_url//\"}
-				
+
 			«ENDFOR»
-	
+
 			«FOR  res: resource.allContents.toIterable.filter(FlyFunctionCall).filter[((it.environment as VariableDeclaration).right as DeclarationObject).features.get(0).value_s.equals("aws")]»
 				#delete lambda function: «res.target.name»_${id}
 				echo "delete lambda function: «res.target.name»_${id}"
 				aws lambda --profile ${user} delete-function --function-name «res.target.name»_${id}
-				
+
 			«ENDFOR»
 	'''
-	
+
 	def CharSequence AWSDebugUndeploy(Resource resource, String string, boolean local,boolean debug)'''
 	#!/bin/bash
-	
+
 	# stop and remove localstack container
 	docker-compose down
-	
+
 	# free some space used by localstack containers
 	docker network rm mynet # mynet is created by docker-compose
 	docker ps -a | awk '{ print $1,$2 }' | grep lambci/lambda:«language» | \
 		awk '{print $1 }' | xargs -I {} docker rm {}
-	
+
 	echo "You may want to free additional space by running"
 	echo -e "\tsudo rm -rf /tmp/_MEI*"
 	'''
