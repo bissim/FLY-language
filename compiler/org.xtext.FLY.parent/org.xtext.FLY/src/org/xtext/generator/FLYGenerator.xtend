@@ -57,10 +57,7 @@ import org.xtext.fLY.ArrayValue
 import org.xtext.fLY.ForIndex
 import org.xtext.fLY.NativeExpression
 import java.util.ArrayList
-import javax.lang.model.type.DeclaredType
-import java.util.List
 import java.util.Arrays
-import org.eclipse.xtend.lib.macro.declaration.Declaration
 import org.xtext.fLY.EnvironemtLiteral
 
 /**
