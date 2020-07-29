@@ -957,6 +957,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	def generatePyVariableFunction(VariableFunction exp, Boolean local, String scope) {
 		// TODO define
+//		println("[Py] handling " + exp.target.name + " of type " + (exp.target.right as DeclarationObject).features.get(0).value_s)
 		if ((exp.target.right instanceof DeclarationObject) && (exp.target.right as DeclarationObject).features.get(0).value_s.equals("random") ) {
 			return '''random.random()'''
 		} else if(exp.feature.equals("length")){
@@ -965,17 +966,18 @@ class FLYGeneratorPython extends AbstractGenerator {
 			return '''«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)» in «exp.target.name»'''
 		} else if(exp.feature.equals("split")){
 			return '''str(«exp.target.name»).split(«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)»)'''
-		} else if ((exp.target.right instanceof DeclarationObject) && (exp.target.right as DeclarationObject).features.get(0).value_s.equals("Graph")) {
+		} else if ((exp.target.right instanceof DeclarationObject) && (exp.target.right as DeclarationObject).features.get(0).value_s.equals("graph")) {
 			// begin graph methods declaration
 			var args = exp.expressions.size;
 			var invocation = '''«exp.target.name».«exp.feature»'''
+//			println("[Py] Building " + invocation)
 			if (args == 1) {
 				return '''«invocation»(«generatePyArithmeticExpression(exp.expressions.get(0),scope,local)»)'''
 			} else if (args > 1) {
 				// please leave this return indentation like this
 				return '''«invocation»(«
-					FOR i : 0 ..< args - 1»
-						«generatePyArithmeticExpression(
+					FOR i : 0 ..< args - 1»«
+						generatePyArithmeticExpression(
 							exp.expressions.get(i),
 							scope,
 							local
