@@ -333,6 +333,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 				«exp.target.name».write(json.dumps(«generatePyArithmeticExpression(exp.expression, scope, local)»).encode('utf8'))
 
 			«ELSEIF (env.contains("aws"))»
+«««				«println("exp.expression in " + env + ": " + exp.expression)»
+				«IF exp.expression instanceof VariableLiteral»
+«««					«println("exp.expression.variable.name: " + (exp.expression as VariableLiteral).variable.name)»
+«««					«println("exp type: " + typeSystem.get(scope).get((exp.expression as VariableLiteral).variable.name))»
+				«ENDIF»
 				«IF exp.expression instanceof VariableLiteral && typeSystem.get(scope).get((exp.expression as VariableLiteral).variable.name).contains("Matrix") »
 					«IF listParams.contains((exp.expression as VariableLiteral).variable.name)»
 					__index=0
@@ -341,7 +346,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 							__«(exp.expression as VariableLiteral).variable.name»_matrix['values'][__index]= «(exp.expression as VariableLiteral).variable.name»[__i*__«(exp.expression as VariableLiteral).variable.name»_cols+__j]
 							__index+=1
 					«ELSE»
-
+						«println("I don't know what to do with " + (exp.expression as VariableLiteral).variable.name)»
 					«ENDIF»
 					«exp.target.name».send_message(
 						MessageBody=json.dumps(__«(exp.expression as VariableLiteral).variable.name»_matrix)
