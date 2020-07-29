@@ -767,12 +767,12 @@ class FLYGeneratorPython extends AbstractGenerator {
 				'''
 			} else if (exp.object instanceof VariableLiteral) {
 				println("Variable: "+ (exp.object as VariableLiteral).variable.name +" type: "+ typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name))
-				if (typeSystem.get(scope).get(variable.name) === null) {
+				if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name) === null) {
 					println("BEWARE! Variable " + (exp.object as VariableLiteral).variable.name + " type is null!")
 					return ''''''
 				} else if ((((exp.object as VariableLiteral).variable.typeobject.equals('var') &&
 					((exp.object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
-					typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("HashMap")) {
+					typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("HashMap"))) {
 					val variableName = (exp.index.indices.get(0) as VariableDeclaration).name
 					return '''
 						for «variableName»k, «variableName»v in «(exp.object as VariableLiteral).variable.name».items():
