@@ -796,7 +796,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 					for «(exp.index.indices.get(0) as VariableDeclaration).name» in os.listdir(«(exp.object as VariableLiteral).variable.name»):
 						«generatePyForBodyExpression(exp.body, scope, local)»
 					'''
-				} else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("String[]") ){
+				} else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).contains("[]") ){
 					return'''
 					for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name»:
 						«generatePyForBodyExpression(exp.body, scope, local)»
