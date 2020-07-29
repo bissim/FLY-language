@@ -435,135 +435,130 @@ class FLYGenerator extends AbstractGenerator {
 		
 	}
 	'''
-		
 
-		
-
-		
-		def undeployFlyFunctionOnCloud(FlyFunctionCall call) {
-			var env = (call.environment.right as DeclarationObject).features.get(0).value_s
-			if(deployed_function.get(env).contains(call.target.name)){
-				deployed_function.remove(call.target.name)
-				var user = (call.environment.right as DeclarationObject).features.get(1).value_s
-				var cred = call.environment.name
-				switch env {
-					case "aws":{
-						return '''
-							Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«call.environment.name»_undeploy.sh");
-							ProcessBuilder __processBuilder_undeploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«call.environment.name»_undeploy.sh «user» «call.target.name» "+__id_execution);
-							Map<String, String> __env_undeploy_«call.target.name» = __processBuilder_undeploy_«call.target.name».environment();
-							
-							__processBuilder_undeploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
-							__processBuilder_undeploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
-							String __path_env_undeploy_«call.target.name» = __env_undeploy_«call.target.name».get("PATH");
-							if (!__path_env_undeploy_«call.target.name».contains("/usr/local/bin")) {
-								 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name»+":/usr/local/bin");
-							}
-							Process __p_undeploy_«call.target.name»;
-							try {
-								__p_undeploy_«call.target.name»= __processBuilder_undeploy_«call.target.name».start();
-								__p_undeploy_«call.target.name».waitFor();
-								if(__p_undeploy_«call.target.name».exitValue()!=0){
-									System.out.println("Error in «call.target.name»_«call.environment.name»_undeploy.sh ");
-									System.exit(1);
-								}
-							} catch (Exception e) {
-								e.printStackTrace();
-							}	
-							'''			
-					} 
-					case "aws-debug":{
-						return '''
-							Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«call.environment.name»_undeploy.sh");
-							ProcessBuilder __processBuilder_undeploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«call.environment.name»_undeploy.sh «user» «call.target.name» "+__id_execution);
-							Map<String, String> __env_undeploy_«call.target.name» = __processBuilder_undeploy_«call.target.name».environment();
-							
-							__processBuilder_undeploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
-							__processBuilder_undeploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
-							String __path_env_undeploy_«call.target.name» = __env_undeploy_«call.target.name».get("PATH");
-							if (!__path_env_undeploy_«call.target.name».contains("/usr/local/bin")) {
-								 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name»+":/usr/local/bin");
-							}
-							Process __p_undeploy_«call.target.name»;
-							try {
-								__p_undeploy_«call.target.name»= __processBuilder_undeploy_«call.target.name».start();
-								__p_undeploy_«call.target.name».waitFor();
-								if(__p_undeploy_«call.target.name».exitValue()!=0){
-									System.out.println("Error in «call.target.name»_«call.environment.name»_undeploy.sh ");
-									System.exit(1);
-								}
-							} catch (Exception e) {
-								e.printStackTrace();
-							}	
-							'''			
-					}
-					case "azure":{
-						return '''
-						«cred».clear("./flyapp«cred»"+__id_execution,"./.env");
-						'''
-					}
-				}
-
-					
-			}else
-				return ''''''
-		}
-		
-		def deployFlyFunctionOnCloud(FlyFunctionCall call) {
-			var environment = (call.environment.right as DeclarationObject).features.get(0).value_s
-			var env_name = call.environment.name
-			println("Function to deploy: " + deployed_function)
-			if (!deployed_function.get(environment).contains(call.target.name)){
-				deployed_function.get(environment).add(call.target.name)
-				
-				if(environment.contains("aws")){
-					var user = (call.environment.right as DeclarationObject).features.get(1).value_s
-					var cred = call.environment.name
+	def undeployFlyFunctionOnCloud(FlyFunctionCall call) {
+		var env = (call.environment.right as DeclarationObject).features.get(0).value_s
+		if(deployed_function.get(env).contains(call.target.name)){
+			deployed_function.remove(call.target.name)
+			var user = (call.environment.right as DeclarationObject).features.get(1).value_s
+			var cred = call.environment.name
+			switch env {
+				case "aws":{
 					return '''
-						__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit( new Callable<Object> (){
-							@Override
-							public Object call() throws Exception{
-								Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«env_name»_deploy.sh");
-								ProcessBuilder __processBuilder_deploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«env_name»_deploy.sh «user» «call.target.name» "+__id_execution);
-								__processBuilder_deploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
-								Map<String, String> __env_deploy_«call.target.name» = __processBuilder_deploy_«call.target.name».environment();
-								__processBuilder_deploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
-								String __path_env_deploy_«call.target.name» = __env_deploy_«call.target.name».get("PATH");
-								if (!__path_env_deploy_«call.target.name».contains("/usr/local/bin")) {
-									 __env_deploy_«call.target.name».put("PATH", __path_env_deploy_«call.target.name»+":/usr/local/bin");
-								}
-								Process __p_deploy_«call.target.name»;
-								try {
-									__p_deploy_«call.target.name» = __processBuilder_deploy_«call.target.name».start();
-									__p_deploy_«call.target.name».waitFor();
-									if(__p_deploy_«call.target.name».exitValue()!=0){
-										System.out.println("Error in «call.target.name»_«env_name»_deploy.sh ");
-										System.exit(1);
-									}
-								} catch (Exception e) {
-									e.printStackTrace();
-								}	
-								return null;
-							}
-						}));
+						Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«call.environment.name»_undeploy.sh");
+						ProcessBuilder __processBuilder_undeploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«call.environment.name»_undeploy.sh «user» «call.target.name» "+__id_execution);
+						Map<String, String> __env_undeploy_«call.target.name» = __processBuilder_undeploy_«call.target.name».environment();
 						
-						'''	
-				}else if((call.environment.right as DeclarationObject).features.get(0).value_s.equals("azure")) {
-					return '''
-						__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit( new Callable<Object> (){
-							@Override
-							public Object call() throws Exception{
-								«call.environment.name».publishFunction("«call.target.name»","src-gen/«call.target.name»_«env_name»_deploy.sh");
-								return null;
+						__processBuilder_undeploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
+						__processBuilder_undeploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
+						String __path_env_undeploy_«call.target.name» = __env_undeploy_«call.target.name».get("PATH");
+						if (!__path_env_undeploy_«call.target.name».contains("/usr/local/bin")) {
+							 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name»+":/usr/local/bin");
+						}
+						Process __p_undeploy_«call.target.name»;
+						try {
+							__p_undeploy_«call.target.name»= __processBuilder_undeploy_«call.target.name».start();
+							__p_undeploy_«call.target.name».waitFor();
+							if(__p_undeploy_«call.target.name».exitValue()!=0){
+								System.out.println("Error in «call.target.name»_«call.environment.name»_undeploy.sh ");
+								System.exit(1);
 							}
-						}));
-						'''	
+						} catch (Exception e) {
+							e.printStackTrace();
+						}	
+					'''
+				}
+				case "aws-debug":{
+					return '''
+						Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«call.environment.name»_undeploy.sh");
+						ProcessBuilder __processBuilder_undeploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«call.environment.name»_undeploy.sh «user» «call.target.name» "+__id_execution);
+						Map<String, String> __env_undeploy_«call.target.name» = __processBuilder_undeploy_«call.target.name».environment();
+						
+						__processBuilder_undeploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
+						__processBuilder_undeploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
+						String __path_env_undeploy_«call.target.name» = __env_undeploy_«call.target.name».get("PATH");
+						if (!__path_env_undeploy_«call.target.name».contains("/usr/local/bin")) {
+							 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name»+":/usr/local/bin");
+						}
+						Process __p_undeploy_«call.target.name»;
+						try {
+							__p_undeploy_«call.target.name»= __processBuilder_undeploy_«call.target.name».start();
+							__p_undeploy_«call.target.name».waitFor();
+							if(__p_undeploy_«call.target.name».exitValue()!=0){
+								System.out.println("Error in «call.target.name»_«call.environment.name»_undeploy.sh ");
+								System.exit(1);
+							}
+						} catch (Exception e) {
+							e.printStackTrace();
+						}	
+					'''
+				}
+				case "azure":{
+					return '''
+						«cred».clear("./flyapp«cred»"+__id_execution,"./.env");
+					'''
 				}
 			}
-			else 
-			return''''''
+
+		}else
+			return ''''''
+	}
+
+	def deployFlyFunctionOnCloud(FlyFunctionCall call) {
+		var environment = (call.environment.right as DeclarationObject).features.get(0).value_s
+		var env_name = call.environment.name
+//		println("Function to deploy: " + deployed_function)
+		if (!deployed_function.get(environment).contains(call.target.name)){
+			deployed_function.get(environment).add(call.target.name)
+			
+			if(environment.contains("aws")){
+				var user = (call.environment.right as DeclarationObject).features.get(1).value_s
+				var cred = call.environment.name
+				return '''
+					__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit( new Callable<Object> (){
+						@Override
+						public Object call() throws Exception{
+							Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«env_name»_deploy.sh");
+							ProcessBuilder __processBuilder_deploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«env_name»_deploy.sh «user» «call.target.name» "+__id_execution);
+							__processBuilder_deploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
+							Map<String, String> __env_deploy_«call.target.name» = __processBuilder_deploy_«call.target.name».environment();
+							__processBuilder_deploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
+							String __path_env_deploy_«call.target.name» = __env_deploy_«call.target.name».get("PATH");
+							if (!__path_env_deploy_«call.target.name».contains("/usr/local/bin")) {
+								__env_deploy_«call.target.name».put("PATH", __path_env_deploy_«call.target.name»+":/usr/local/bin");
+							}
+							Process __p_deploy_«call.target.name»;
+							try {
+								__p_deploy_«call.target.name» = __processBuilder_deploy_«call.target.name».start();
+								__p_deploy_«call.target.name».waitFor();
+								if(__p_deploy_«call.target.name».exitValue()!=0){
+									System.out.println("Error in «call.target.name»_«env_name»_deploy.sh ");
+									System.exit(1);
+								}
+							} catch (Exception e) {
+								e.printStackTrace();
+							}	
+							return null;
+						}
+					}));
+					
+				'''	
+			}else if((call.environment.right as DeclarationObject).features.get(0).value_s.equals("azure")) {
+				return '''
+					__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit( new Callable<Object> (){
+						@Override
+						public Object call() throws Exception{
+							«call.environment.name».publishFunction("«call.target.name»","src-gen/«call.target.name»_«env_name»_deploy.sh");
+							return null;
+						}
+					}));
+				'''	
+			}
 		}
-		
+		else
+			return''''''
+	}
+
 	def generateExpression(Expression element, String scope) {
 		'''
 			«IF element  instanceof VariableDeclaration»
@@ -621,12 +616,12 @@ class FLYGenerator extends AbstractGenerator {
 			«ENDIF»
 		'''
 	}
-		
-		def generatePostfixOperation(PostfixOperation exp, String scope) {
-			return '''
-				«generateArithmeticExpression(exp.variable,scope)»«exp.feature»;
-			'''
-		}
+
+	def generatePostfixOperation(PostfixOperation exp, String scope) {
+		return '''
+			«generateArithmeticExpression(exp.variable,scope)»«exp.feature»;
+		'''
+	}
 
 	def generateSortExpression(SortExpression exp, String scope) {
 		return '''
@@ -667,7 +662,7 @@ class FLYGenerator extends AbstractGenerator {
 					case "smp": {
 						return '''
 							static ExecutorService __thread_pool_«dec.name» = Executors.newFixedThreadPool(«((dec.right as DeclarationObject).features.get(1)).value_t»);
-							'''
+						'''
 					}
 					case "aws-debug":{
 						var access_id_key = ((dec.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s
@@ -757,7 +752,6 @@ class FLYGenerator extends AbstractGenerator {
 						'''
 					}
 					case "file":{ //TO-D0: add support to directory
-						
 						typeSystem.get(scope).put(dec.name, "File")
 						if((dec.right as DeclarationObject).features.get(1).value_f == null){
 							var path = (dec.right as DeclarationObject).features.get(1).value_s
@@ -784,20 +778,19 @@ class FLYGenerator extends AbstractGenerator {
 						
 					}
 					case "dataframe":{
-							var path = (dec.right as DeclarationObject).features.get(1).value_s
-				
-								typeSystem.get(scope).put(dec.name, "Table")
-							return '''
-								Table «dec.name» = Table.read().csv(CsvReadOptions
-									.builder(«IF dec.onCloud && ! (path.contains("https://")) » "https://s3.us-east-2.amazonaws.com/bucket-"+__id_execution+"/«path»" «ELSE»"«path»"«ENDIF»)
-									.maxNumberOfColumns(5000)
-									.tableName("«dec.name»")
-									.separator('«(dec.right as DeclarationObject).features.get(2).value_s»')
-								);
-								«IF dec.onCloud»
-								 	«deployFileOnCloud(dec,id_execution)»
-								«ENDIF»
-							'''
+						var path = (dec.right as DeclarationObject).features.get(1).value_s
+						typeSystem.get(scope).put(dec.name, "Table")
+						return '''
+							Table «dec.name» = Table.read().csv(CsvReadOptions
+								.builder(«IF dec.onCloud && ! (path.contains("https://")) » "https://s3.us-east-2.amazonaws.com/bucket-"+__id_execution+"/«path»" «ELSE»"«path»"«ENDIF»)
+								.maxNumberOfColumns(5000)
+								.tableName("«dec.name»")
+								.separator('«(dec.right as DeclarationObject).features.get(2).value_s»')
+							);
+							«IF dec.onCloud»
+								«deployFileOnCloud(dec,id_execution)»
+							«ENDIF»
+						'''
 					}
 					case "graph": {
 						val path = (dec.right as DeclarationObject).features.get(1).value_s
@@ -832,12 +825,17 @@ class FLYGenerator extends AbstractGenerator {
 				var i = 0;
 				for (f : (dec.right as NameObjectDef).features) {
 					if (f.feature != null) {
-						typeSystem.get(scope).put(dec.name + "." + f.feature,
-							valuateArithmeticExpression(f.value, scope))
+						typeSystem.get(scope).put(
+							dec.name + "." + f.feature,
+							valuateArithmeticExpression(f.value, scope)
+						)
 						s = s + '''«dec.name».put("«f.feature»",«generateArithmeticExpression(f.value,scope)»);
 						'''
 					} else {
-						typeSystem.get(scope).put(dec.name + "[" + i + "]", valuateArithmeticExpression(f.value, scope))
+						typeSystem.get(scope).put(
+							dec.name + "[" + i + "]",
+							valuateArithmeticExpression(f.value, scope)
+						)
 						s = s + '''«dec.name».put(«i»,«generateArithmeticExpression(f.value,scope)»);
 						'''
 						i++
@@ -864,7 +862,6 @@ class FLYGenerator extends AbstractGenerator {
 					var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
 					var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
 					typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col)
-					
 					var s = '''«real_type»[][] «dec.name» = new «real_type»[«row»][«col»];'''
 					return s
 				} else if ((dec.right as ArrayDefinition).indexes.length==3) { //three-dimensional
@@ -875,10 +872,7 @@ class FLYGenerator extends AbstractGenerator {
 					var s = '''«real_type»[][][] «dec.name» = new «real_type»[«row»][«col»][«dep»];'''
 					return s
 				}
-				
-				
 			}else if(dec.right instanceof ArrayInit){
-			
 				if(((dec.right as ArrayInit).values.get(0) instanceof NumberLiteral) ||
 					((dec.right as ArrayInit).values.get(0) instanceof StringLiteral) ||
 					((dec.right as ArrayInit).values.get(0) instanceof FloatLiteral)
@@ -945,7 +939,6 @@ class FLYGenerator extends AbstractGenerator {
 							return ret	
 						}
 					}
-					
 				}
 			} else if (dec.right instanceof FlyFunctionCall) {
 				var s = '''
@@ -979,8 +972,10 @@ class FLYGenerator extends AbstractGenerator {
 //						}
 //					'''
 //				} else {
-					typeSystem.get(scope).put(dec.name,
-						valuateArithmeticExpression(dec.right as VariableFunction, scope))
+					typeSystem.get(scope).put(
+						dec.name,
+						valuateArithmeticExpression(dec.right as VariableFunction, scope)
+					)
 					return '''
 						«valuateArithmeticExpression(dec.right as VariableFunction,scope)» «dec.name» = «generateArithmeticExpression(dec.right as VariableFunction,scope)»;
 					'''
@@ -1034,58 +1029,59 @@ class FLYGenerator extends AbstractGenerator {
 			}
 		}
 	}
-	
+
 	def generateConstantDeclaration(ConstantDeclaration dec, String scope) {//DA MODIFICARE ASSOLUTAMENTE FATTO SOLO PER FAR FUNZIONARE JS
 		if (dec.right instanceof NameObjectDef){ 
-				typeSystem.get(scope).put(dec.name, "HashMap")
-				var s = '''static HashMap<Object,Object> «dec.name» = new HashMap<Object,Object>();
-				'''
-				var i = 0;
-				for (f : (dec.right as NameObjectDef).features) {
-					if (f.feature != null) {
-						typeSystem.get(scope).put(dec.name + "." + f.feature,
-							valuateArithmeticExpression(f.value, scope))
-						//s = s + '''«dec.name».put("«f.feature»",«generateArithmeticExpression(f.value,scope)»);
-						//'''
-					} else {
-						typeSystem.get(scope).put(dec.name + "[" + i + "]", valuateArithmeticExpression(f.value, scope))
-						//s = s + '''«dec.name».put(«i»,«generateArithmeticExpression(f.value,scope)»);
-						//'''
-						i++
-					}
-
+			typeSystem.get(scope).put(dec.name, "HashMap")
+			var s = '''static HashMap<Object,Object> «dec.name» = new HashMap<Object,Object>();
+			'''
+			var i = 0;
+			for (f : (dec.right as NameObjectDef).features) {
+				if (f.feature != null) {
+					typeSystem.get(scope).put(
+						dec.name + "." + f.feature,
+						valuateArithmeticExpression(f.value, scope)
+					)
+					//s = s + '''«dec.name».put("«f.feature»",«generateArithmeticExpression(f.value,scope)»);
+					//'''
+				} else {
+					typeSystem.get(scope).put(dec.name + "[" + i + "]", valuateArithmeticExpression(f.value, scope))
+					//s = s + '''«dec.name».put(«i»,«generateArithmeticExpression(f.value,scope)»);
+					//'''
+					i++
 				}
-				return s			
+			}
+			return s
 		} else if(dec.right instanceof ArrayDefinition){
 			var type_decl = (dec.right as ArrayDefinition).type
-				var real_type = ""
-				if(type_decl.equals("Integer")){
-					real_type = "int"
-				}else if(type_decl.equals("Double")){
-					real_type = "double"
-				}else if(type_decl.equals("String")){
-					real_type = "String"
-				}
-				if((dec.right as ArrayDefinition).indexes.length==1){ //mono-dimensional
-					typeSystem.get(scope).put(dec.name, "Array_"+type_decl)
-					var array_len = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-					var s = '''static «real_type»[] «dec.name» = new «real_type»[«array_len»];'''
-					return s
-				} else if((dec.right as ArrayDefinition).indexes.length==2){ //bi-dimensional
-					var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-					var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
-					typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col)
-					
-					var s = '''static «real_type»[][] «dec.name» = new «real_type»[«row»][«col»];'''
-					return s
-				} else if ((dec.right as ArrayDefinition).indexes.length==3) { //three-dimensional
-					var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-					var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
-					var dep = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(2).value,scope)
-					typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col+"_"+dep)
-					var s = '''static «real_type»[][][] «dec.name» = new «real_type»[«row»][«col»][«dep»];'''
-					return s
-				}
+			var real_type = ""
+			if(type_decl.equals("Integer")){
+				real_type = "int"
+			}else if(type_decl.equals("Double")){
+				real_type = "double"
+			}else if(type_decl.equals("String")){
+				real_type = "String"
+			}
+			if((dec.right as ArrayDefinition).indexes.length==1){ //mono-dimensional
+				typeSystem.get(scope).put(dec.name, "Array_"+type_decl)
+				var array_len = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
+				var s = '''static «real_type»[] «dec.name» = new «real_type»[«array_len»];'''
+				return s
+			} else if((dec.right as ArrayDefinition).indexes.length==2){ //bi-dimensional
+				var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
+				var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
+				typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col)
+				
+				var s = '''static «real_type»[][] «dec.name» = new «real_type»[«row»][«col»];'''
+				return s
+			} else if ((dec.right as ArrayDefinition).indexes.length==3) { //three-dimensional
+				var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
+				var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
+				var dep = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(2).value,scope)
+				typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col+"_"+dep)
+				var s = '''static «real_type»[][][] «dec.name» = new «real_type»[«row»][«col»][«dep»];'''
+				return s
+			}
 		}else if(dec.right instanceof ArrayInit){
 			
 				if(((dec.right as ArrayInit).values.get(0) instanceof NumberLiteral) ||
@@ -1157,8 +1153,10 @@ class FLYGenerator extends AbstractGenerator {
 					
 				}
 			} else if(dec.right instanceof ArithmeticExpression){
-			typeSystem.get(scope).put(dec.name,
-					valuateArithmeticExpression(dec.right as ArithmeticExpression, scope))
+				typeSystem.get(scope).put(
+					dec.name,
+					valuateArithmeticExpression(dec.right as ArithmeticExpression, scope)
+				)
 				//println(dec.name + " --- " + typeSystem.get(scope).get(dec.name));
 				return '''static «valuateArithmeticExpression(dec.right as ArithmeticExpression,scope)» «dec.name» = «generateArithmeticExpression(dec.right as ArithmeticExpression,scope)»;'''
 			
@@ -1294,11 +1292,8 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 			}
 		}
 	}
+}
 
-}	
-
-
-	
 	def setEnvironmentDeclarationInfo(VariableDeclaration dec){
 		var env = ((dec.right as DeclarationObject).features.get(0)).value_s
 		var dec_name = dec.name
@@ -1359,12 +1354,12 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 					public void run() {
 						try {
 							while(true) {
-				                Socket __socket = __socket_server_«dec.name».accept();
-				                InputStreamReader __isr = new InputStreamReader(__socket.getInputStream());
-				                BufferedReader __br = new BufferedReader(__isr);
-				                String __response = __br.readLine();
-				                __socket.close();
-							    «dec.name».put(__response);
+								Socket __socket = __socket_server_«dec.name».accept();
+								InputStreamReader __isr = new InputStreamReader(__socket.getInputStream());
+								BufferedReader __br = new BufferedReader(__isr);
+								String __response = __br.readLine();
+								__socket.close();
+								«dec.name».put(__response);
 							}
 						}catch (Exception e) {
 							
@@ -2780,30 +2775,29 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 						}
 						__scanner_«name».close();
 					'''
-				}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("Directory")){ //TO-DO: add support directory
-					return '''
-						for (String __«(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name».list()) {
-							String «(indexes.indices.get(0) as VariableDeclaration).name» = «(object as VariableLiteral).variable.name».getAbsolutePath()+"/"+ __«(indexes.indices.get(0) as VariableDeclaration).name»;
-							«generateForBodyExpression(body, scope)»
-						}
-					'''
-				}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("[]")){
-					return '''
-						for (String «(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name») {
-							«generateForBodyExpression(body, scope)»
-						}
-					'''
-				}else if (typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("Table")){
+			}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("Directory")){ //TO-DO: add support directory
+				return '''
+					for (String __«(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name».list()) {
+						String «(indexes.indices.get(0) as VariableDeclaration).name» = «(object as VariableLiteral).variable.name».getAbsolutePath()+"/"+ __«(indexes.indices.get(0) as VariableDeclaration).name»;
+						«generateForBodyExpression(body, scope)»
+					}
+				'''
+			}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("[]")){
+				return '''
+					for (String «(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name») {
+						«generateForBodyExpression(body, scope)»
+					}
+				'''
+			}else if (typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("Table")){
 				var name = (object as VariableLiteral).variable.name;
 				var index_name = (indexes.indices.get(0) as VariableDeclaration).name
 				typeSystem.get(scope).put(index_name,name); 
-					return '''
-						for(int _«name»=0; _«name»< «name».rowCount();_«name»++){
-							«generateForBodyExpression(body, scope)»
-						}
-					'''
-				}
-			 else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("Array")){
+				return '''
+					for(int _«name»=0; _«name»< «name».rowCount();_«name»++){
+						«generateForBodyExpression(body, scope)»
+					}
+				'''
+			} else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("Array")){
 				
 			}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("Matrix")){
 				var name = (object as VariableLiteral).variable.name;
@@ -2876,10 +2870,11 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 			}
 
 			return '''
-			«generateVariableFunction(function, false, scope)»
-			for(HashMap<String,Object> «(indexes.indices.get(0) as VariableDeclaration).name» : __«function.target.name»_rows.values()){
-				«generateForBodyExpression(body, scope)»
-			}'''
+				«generateVariableFunction(function, false, scope)»
+				for(HashMap<String,Object> «(indexes.indices.get(0) as VariableDeclaration).name» : __«function.target.name»_rows.values()){
+					«generateForBodyExpression(body, scope)»
+				}
+			'''
 		} else if(object instanceof IndexObject){ // if  it's a sub-array or a sub-matrix
 			
 		} 
@@ -3039,8 +3034,6 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 			return ''''''
 		return s
 	}
-	
-	
 
 	def getParameterType(String name, Expression param, int pos) {
 		println("getParameterType " + name + " params " + param + " pos " + pos)
@@ -3173,44 +3166,43 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 			return "Double"
 		} else if (exp instanceof VariableLiteral) {
 			val variable = exp.variable
-		if (variable.typeobject.equals("var")) {
-			if (variable.right instanceof DeclarationObject) {
-				var type = (variable.right as DeclarationObject).features.get(0).value_s
-				switch (type) {
-					case "dataframe": {
-						return "Table"
-					}
-					case "channel":{
-						return "channel"
-					}
-					case "random":{
-						return "Random"
-					}
-					case "file":{
-						if((variable.right as DeclarationObject).features.get(1).value_s != null){
-							var path = (variable.right as DeclarationObject).features.get(1).value_s.split("/")
-							var filename = path.get(path.length-1)
-							if (filename.split(".").length != 2)
-								return "String[]"
-							else
+			if (variable.typeobject.equals("var")) {
+				if (variable.right instanceof DeclarationObject) {
+					var type = (variable.right as DeclarationObject).features.get(0).value_s
+					switch (type) {
+						case "dataframe": {
+							return "Table"
+						}
+						case "channel":{
+							return "channel"
+						}
+						case "random":{
+							return "Random"
+						}
+						case "file":{
+							if((variable.right as DeclarationObject).features.get(1).value_s != null){
+								var path = (variable.right as DeclarationObject).features.get(1).value_s.split("/")
+								var filename = path.get(path.length-1)
+								if (filename.split(".").length != 2)
+									return "String[]"
+								else
+									return "File"
+							}else
 								return "File"
-						}else
-						return "File"
-						
+						}
+						default: {
+							return "variable"
+						}
 					}
-					default: {
-						return "variable"
-					}
+				} else if (variable.right instanceof NameObjectDef) {
+					return "HashMap"
+				} else if (variable.right instanceof ArithmeticExpression) {
+					return valuateArithmeticExpression(variable.right as ArithmeticExpression, scope)
+				}else{
+					return typeSystem.get(scope).get(variable.name) // if it's a parameter of a FunctionDefinition
 				}
-			} else if (variable.right instanceof NameObjectDef) {
-				return "HashMap"
-			} else if (variable.right instanceof ArithmeticExpression) {
-				return valuateArithmeticExpression(variable.right as ArithmeticExpression, scope)
-			}else{
-				return typeSystem.get(scope).get(variable.name) // if it's a parameter of a FunctionDefinition
 			}
-		}
-		return "variable"
+			return "variable"
 		} else if (exp instanceof NameObject) {
 			return typeSystem.get(scope).get(exp.name.name + "." + exp.value)
 		} else if (exp instanceof IndexObject) {
@@ -3333,7 +3325,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 			return null
 		}
 	}
-	
+
 	def Boolean checkAWS(){
 		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
 			filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)]
@@ -3343,7 +3335,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 		}
 		return false
 	}
-	
+
 	def Boolean checkAWSDebug(){
 		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
 			filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)]
@@ -3356,7 +3348,7 @@ def deployFileOnCloud(VariableDeclaration dec,long id) {
 		}
 		return false
 	}
-	
+
 	def Boolean checkAzure(){
 		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
 			filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)]
