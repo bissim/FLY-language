@@ -893,7 +893,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 			return '''__environment'''
 		}
 		if (exp instanceof StringLiteral) {
-			return ''' '«exp.value»' '''
+			val quote = "'"
+			return '''«quote»«exp.value»«quote»'''
 		} else if (exp instanceof VariableLiteral) {
 			return '''«exp.variable.name»'''
 		} else if (exp instanceof VariableFunction) {
