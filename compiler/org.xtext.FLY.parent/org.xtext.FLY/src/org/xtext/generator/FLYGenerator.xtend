@@ -791,7 +791,7 @@ class FLYGenerator extends AbstractGenerator {
 					case "graph": {
 						val path = (dec.right as DeclarationObject).features.get(1).value_s
 						val separator = (dec.right as DeclarationObject).features.get(2).value_s
-						val class = (dec.right as DeclarationObject).features.get(3).value_s
+						val nodeClass = (dec.right as DeclarationObject).features.get(3).value_s
 						val isDirected = (dec.right as DeclarationObject).features.get(4).value_s
 						val isWeighted = (dec.right as DeclarationObject).features.get(5).value_s
 						typeSystem.get(scope).put(dec.name, "Graph")
@@ -801,10 +801,10 @@ class FLYGenerator extends AbstractGenerator {
 						// 4th param: isDirected
 						// 5th param: isWeighted
 						return '''
-							Graph<«class», Object> «dec.name» = Graph.importGraph(
+							Graph<«nodeClass», Object> «dec.name» = Graph.importGraph(
 								"«path»",
 								"«separator»",
-								«class».class,
+								«nodeClass».class,
 								«IF isWeighted == "true"»true«ELSE»false«ENDIF»,
 								«IF isDirected == "true"»true«ELSE»false«ENDIF»
 							);
