@@ -2712,10 +2712,7 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	def generateFor(ForIndex indexes, ArithmeticExpression object, Expression body, String scope) {
-		if ((indexes.indices.get(0) as VariableDeclaration).typeobject == null) {
-			println("BEWARE! index '" + (indexes.indices.get(0) as VariableDeclaration).name + "' type was null! Type 'var' has been set")
-			(indexes.indices.get(0) as VariableDeclaration).typeobject = 'var'
-		}
+		(indexes.indices.get(0) as VariableDeclaration).typeobject = 'var'
 		if (object instanceof CastExpression) {
 			if ((object as CastExpression).type.equals("Dat")) { // dat
 				var name = ((object as CastExpression).target as VariableLiteral).variable.name
