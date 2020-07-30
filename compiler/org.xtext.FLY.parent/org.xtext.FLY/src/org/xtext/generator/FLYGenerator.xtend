@@ -2712,7 +2712,10 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	def generateFor(ForIndex indexes, ArithmeticExpression object, Expression body, String scope) {
-		(indexes.indices.get(0) as VariableDeclaration).typeobject = 'var'
+		if ((indexes.indices.get(0) as VariableDeclaration).typeobject == null) {
+			println("BEWARE! index '" + (indexes.indices.get(0) as VariableDeclaration).name + "' type was null! Type 'var' has been set")
+			(indexes.indices.get(0) as VariableDeclaration).typeobject = 'var'
+		}
 		if (object instanceof CastExpression) {
 			if ((object as CastExpression).type.equals("Dat")) { // dat
 				var name = ((object as CastExpression).target as VariableLiteral).variable.name
@@ -2744,17 +2747,21 @@ class FLYGenerator extends AbstractGenerator {
 					«generateExpression(body,scope)»
 				}
 			'''
-		} else if (object instanceof VariableLiteral) { // FIXME type is null if object is an inner for variable
+		} else if (object instanceof VariableLiteral) {
 			println("Iterating over " + (object as VariableLiteral).variable.name + " of type " + (object as VariableLiteral).variable.typeobject)
 			println("Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " of type " + (indexes.indices.get(0) as VariableDeclaration).typeobject)
-			if (typeSystem.get(scope).get((object as VariableLiteral).variable.name) === null) {
-				println("BEWARE! Variable " + (object as VariableLiteral).variable.name + " type is 'null'!")
-				return ''''''
-			} else if ((((object as VariableLiteral).variable.typeobject.equals('var') &&
+			if (typeSystem.get(scope).get((object as VariableLiteral).variable.name) == null) {
+				println("BEWARE! Variable " + (object as VariableLiteral).variable.name + " type is 'null'! Setting 'Object'...")
+				typeSystem.get(scope).put((object as VariableLiteral).variable.name, "Object")
+			}
+			if (typeSystem.get(scope).get((indexes.indices.get(0) as VariableDeclaration).name) == null) {
+				println("BEWARE! Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " type is 'null'! Setting 'Object'...")
+				typeSystem.get(scope).put((object as VariableLiteral).variable.name, "Object")
+			}
+			if ((((object as VariableLiteral).variable.typeobject.equals('var') &&
 				((object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
 				typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("HashMap"))) {
 				return '''
-
 					for(Object _«(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name».keySet() ){
 						HashMap<Object, Object> «(indexes.indices.get(0) as VariableDeclaration).name» = new HashMap<Object,Object>();
 						«(indexes.indices.get(0) as VariableDeclaration).name».put("k",_«(indexes.indices.get(0) as VariableDeclaration).name»);
@@ -2812,17 +2819,24 @@ class FLYGenerator extends AbstractGenerator {
 					}
 				}
 				'''
+			} else {
+				println("'" + typeSystem.get(scope).get((object as VariableLiteral).variable.name) + "' is not a feasible type!")
 			}
 		} else if (object instanceof VariableFunction) { // di che tipo è il target della variable function
 			val function = object as VariableFunction
 			val targetType = typeSystem.get(scope).get(function.target.name)
+			val targetTypeObject = function.target.typeobject
+//			println("Target is '" + function.target.name + "', Java type " + targetType + ", typeobject " + targetTypeObject)
 			if (targetType.contains("Graph")) {
 				// considerare il tipo di ritorno dalla funzione
 				// in base al tipo di ritorno costruisci l'intestazione del
 				// ciclo for che itera sul giusto tipo di dati
 				val feature = function.feature
-				var indexVarName = (indexes.indices.get(0) as VariableDeclaration).name
-				print("Invoking " + feature + " Graph method over " + function.target.name)
+				val indexVarName = (indexes.indices.get(0) as VariableDeclaration).name
+//				val indexVarType = (indexes.indices.get(0) as VariableDeclaration).typeobject
+				var indexJType = ""
+//				println("Loop variable '" + indexVarName + "' of type " + indexVarType)
+				print("Iterating over '" + function.target.name + "." + feature + "()' " + targetType + " invocation")
 				if ( // methods return Object[]
 					this.graphMethodsReturnTypes.get(feature).equals("Object[]")
 				) {
@@ -2832,23 +2846,22 @@ class FLYGenerator extends AbstractGenerator {
 						feature.equals("stronglyConnectedComponents")
 					) { // methods returning Object[] whose elements are still Object[]
 						println(" as array of arrays...")
-						// TODO convert the array of array representation into a map
+						indexJType = "Object[]"
+						typeSystem.get(scope).put(indexVarName, indexJType)
+						var ts = System.currentTimeMillis
 						return '''
-						// first convert array of arrays into a map
-						Object[] comps = «generateVariableFunction(function, false, scope)»;
-						HashMap<Integer, Object[]> compsMap = new HashMap<>();
-						««« TODO convert array of arrays into map
-
-						// then iterate over it
-						for (Object[] «indexVarName»: ) {
+						Object[] comps_«ts» = «generateVariableFunction(function, false, scope)»;
+						for (int pos = 0; pos < comps_«ts».length; pos++) {
+							«indexJType» «indexVarName» = («indexJType») comps_«ts»[pos];
 							«generateForBodyExpression(body, scope)»
 						}
 						'''
 					} else {
 						println("...")
-						typeSystem.get(scope).put(indexVarName, "Object")
+						indexJType = "Object"
+						typeSystem.get(scope).put(indexVarName, indexJType)
 						return '''
-						for (Object «indexVarName»: «generateVariableFunction(function, false, scope)») {
+						for («indexJType» «indexVarName»: «generateVariableFunction(function, false, scope)») {
 							«generateForBodyExpression(body, scope)»
 						}
 						'''
@@ -2857,14 +2870,15 @@ class FLYGenerator extends AbstractGenerator {
 					this.graphMethodsReturnTypes.get(feature).equals("Graph[]")
 				) {
 					println(" returning 'Graph[]'...")
-					typeSystem.get(scope).put(indexVarName, "Graph")
+					indexJType = "Graph"
+					typeSystem.get(scope).put(indexVarName, indexJType)
 					return '''
-					for (Graph «indexVarName»: «generateVariableFunction(function, false, scope)») {
+					for («indexJType» «indexVarName»: «generateVariableFunction(function, false, scope)») {
 						«generateForBodyExpression(body, scope)»
 					}
 					'''
 				} else { // else lascio quello che ci sta
-					println()
+					println(" returning what?")
 					return '''«generateVariableFunction(function, false, scope)»;'''
 				}
 			}
