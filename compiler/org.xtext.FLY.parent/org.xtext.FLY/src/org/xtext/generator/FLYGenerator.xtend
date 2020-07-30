@@ -1010,7 +1010,7 @@ class FLYGenerator extends AbstractGenerator {
 						}
 					}else if((((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") ){
 						typeSystem.get(scope).put(dec.name, valuateArithmeticExpression((dec.right as CastExpression),scope))
-						println("Local type system: " + typeSystem.get(scope))
+//						println("Local type system: " + typeSystem.get(scope))
 						return '''
 							«valuateArithmeticExpression((dec.right as CastExpression),scope)» «dec.name» = («valuateArithmeticExpression((dec.right as CastExpression),scope)») «((dec.right as CastExpression).target as ChannelReceive).target.name».take();
 						'''
@@ -1019,7 +1019,7 @@ class FLYGenerator extends AbstractGenerator {
 
 				typeSystem.get(scope).put(dec.name,
 					valuateArithmeticExpression(dec.right as ArithmeticExpression, scope))
-				println("Expression " + dec.name + " typed " + typeSystem.get(scope).get(dec.name));
+//				println("Expression " + dec.name + " typed " + typeSystem.get(scope).get(dec.name));
 //				println("Expression type system: " + typeSystem)
 				return '''«valuateArithmeticExpression(dec.right as ArithmeticExpression,scope)» «dec.name» = «generateArithmeticExpression(dec.right as ArithmeticExpression,scope)»;'''
 			}
@@ -1541,7 +1541,7 @@ class FLYGenerator extends AbstractGenerator {
 		}else if (expression instanceof VariableLiteral) {
 			return '''«expression.variable.name»'''
 		} else if (expression instanceof NameObject) {
-			println("Name object expression: " + expression)
+//			println("Name object expression: " + expression)
 			if(expression.name instanceof VariableDeclaration && expression.name.right!=null && expression.name.right instanceof CastExpression){
 				if((expression.name.right as CastExpression).type.equals("Object")){
 					return '''«expression.name.name».get("«expression.value»")'''
@@ -1778,7 +1778,7 @@ class FLYGenerator extends AbstractGenerator {
 				}
 				case "channel":{
 					if(expression.feature.equals("close")){
-						println("channel on " + ((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s)
+//						println("channel on " + ((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s)
 						return '''
 							«IF !((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") »
 								__wait_on_«expression.target.name» = false;
@@ -1821,15 +1821,13 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	// methods for statement
-	def generateBlockExpression(BlockExpression exp, String scope) {
-		'''
-			{
-				«FOR element : exp.expressions»
-					«generateExpression(element,scope)»
-				«ENDFOR»
-			}
-		'''
-	}
+	def generateBlockExpression(BlockExpression exp, String scope) '''
+		{
+			«FOR element: exp.expressions»
+				«generateExpression(element, scope)»
+			«ENDFOR»
+		}
+	'''
 
 	def generateFunctionReturn(FunctionReturn return1, String scope) {
 		'''
@@ -2748,8 +2746,8 @@ class FLYGenerator extends AbstractGenerator {
 				}
 			'''
 		} else if (object instanceof VariableLiteral) {
-			println("Iterating over " + (object as VariableLiteral).variable.name + " of type " + (object as VariableLiteral).variable.typeobject)
-			println("Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " of type " + (indexes.indices.get(0) as VariableDeclaration).typeobject)
+//			println("Iterating over " + (object as VariableLiteral).variable.name + " of type " + (object as VariableLiteral).variable.typeobject)
+//			println("Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " of type " + (indexes.indices.get(0) as VariableDeclaration).typeobject)
 			if (typeSystem.get(scope).get((object as VariableLiteral).variable.name) == null) {
 				println("BEWARE! Variable " + (object as VariableLiteral).variable.name + " type is 'null'! Setting 'Object'...")
 				typeSystem.get(scope).put((object as VariableLiteral).variable.name, "Object")
@@ -2836,16 +2834,16 @@ class FLYGenerator extends AbstractGenerator {
 //				val indexVarType = (indexes.indices.get(0) as VariableDeclaration).typeobject
 				var indexJType = ""
 //				println("Loop variable '" + indexVarName + "' of type " + indexVarType)
-				print("Iterating over '" + function.target.name + "." + feature + "()' " + targetType + " invocation")
+//				print("Iterating over '" + function.target.name + "." + feature + "()' " + targetType + " invocation")
 				if ( // methods return Object[]
 					this.graphMethodsReturnTypes.get(feature).equals("Object[]")
 				) {
-					print(" returning 'Object[]'")
+//					print(" returning 'Object[]'")
 					if (
 						feature.equals("connectedComponents") ||
 						feature.equals("stronglyConnectedComponents")
 					) { // methods returning Object[] whose elements are still Object[]
-						println(" as array of arrays...")
+//						println(" as array of arrays...")
 						indexJType = "Object[]"
 						typeSystem.get(scope).put(indexVarName, indexJType)
 						var ts = System.currentTimeMillis
@@ -2857,7 +2855,7 @@ class FLYGenerator extends AbstractGenerator {
 						}
 						'''
 					} else {
-						println("...")
+//						println("...")
 						indexJType = "Object"
 						typeSystem.get(scope).put(indexVarName, indexJType)
 						return '''
@@ -2869,7 +2867,7 @@ class FLYGenerator extends AbstractGenerator {
 				} else if ( // methods returning Graph[]
 					this.graphMethodsReturnTypes.get(feature).equals("Graph[]")
 				) {
-					println(" returning 'Graph[]'...")
+//					println(" returning 'Graph[]'...")
 					indexJType = "Graph"
 					typeSystem.get(scope).put(indexVarName, indexJType)
 					return '''
@@ -2878,7 +2876,7 @@ class FLYGenerator extends AbstractGenerator {
 					}
 					'''
 				} else { // else lascio quello che ci sta
-					println(" returning what?")
+//					println(" returning what?")
 					return '''«generateVariableFunction(function, false, scope)»;'''
 				}
 			}
@@ -2895,13 +2893,13 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	// TODO test
-	def generateForBodyExpression(Expression body, String scope) {
-		if (body instanceof BlockExpression) {
-			generateBlockExpression(body, scope)
-		} else {
-			generateExpression(body, scope)
-		}
-	}
+	def generateForBodyExpression(Expression body, String scope) '''
+		«IF body instanceof BlockExpression»
+			«generateBlockExpression(body, scope)»
+		«ELSE»
+			«generateExpression(body, scope)»
+		«ENDIF»
+	'''
 
 	def generateIfExpression(IfExpression expression, String scope) {
 		'''
@@ -3048,12 +3046,12 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	def getParameterType(String name, Expression param, int pos) {
-		println("getParameterType " + name + " params " + param + " pos " + pos)
+//		println("getParameterType " + name + " params " + param + " pos " + pos)
 		for (exp : res.allContents.toIterable.filter(Expression)) {
 			if (exp instanceof LocalFunctionCall && ((exp as LocalFunctionCall).target.name == name)) {
 				var typeobject = valuateArithmeticExpression(
 					((exp as LocalFunctionCall).input as LocalFunctionInput).inputs.get(pos), "main")
-				println("params: " + param + " ----- type object " + typeobject)
+//				println("params: " + param + " ----- type object " + typeobject)
 				if (typeobject == "Table") {
 					(param as VariableDeclaration).typeobject = "dat"
 					typeSystem.get(name).put((param as VariableDeclaration).name, "Table");
