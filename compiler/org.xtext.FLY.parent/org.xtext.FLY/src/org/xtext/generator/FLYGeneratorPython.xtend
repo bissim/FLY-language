@@ -766,9 +766,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 						«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			} else if (exp.object instanceof VariableLiteral) {
-				println("Variable: "+ (exp.object as VariableLiteral).variable.name +" type: "+ typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name))
+//				println("Variable: "+ (exp.object as VariableLiteral).variable.name + " type: " + typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name))
 				if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name) === null) {
-					println("BEWARE! Variable " + (exp.object as VariableLiteral).variable.name + " type is null!")
+					println("[Py] BEWARE! Variable " + (exp.object as VariableLiteral).variable.name + " type is null!")
 					return ''''''
 				} else if ((((exp.object as VariableLiteral).variable.typeobject.equals('var') &&
 					((exp.object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
@@ -860,7 +860,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 //				println("Exp left: " + exp.left + ", Exp right: " + exp.right)
 //				println("Exp left type: " + valuateArithmeticExpression(exp.left, scope, local))
 //				println("Exp right type: " + valuateArithmeticExpression(exp.right, scope, local))
-				println("type system: " + typeSystem)
+//				println("type system: " + typeSystem)
 				val leftTypeString = valuateArithmeticExpression(exp.left, scope, local).equals("String");
 				val rightTypeString = valuateArithmeticExpression(exp.right, scope, local).equals("String");
 				if ((leftTypeString && rightTypeString) || (!leftTypeString && !rightTypeString)) {
@@ -915,7 +915,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			if (exp.indexes.length == 1) {
 				return '''«(exp.name as VariableDeclaration).name»[«generatePyArithmeticExpression(exp.indexes.get(0).value, scope, local)»]'''
 			} else if(exp.indexes.length == 2) { //matrix 2d
-				println("Expression indexes: " + exp.indexes)
+//				println("Expression indexes: " + exp.indexes)
 //				println("Expression: " + exp)
 				var i = generatePyArithmeticExpression(exp.indexes.get(0).value ,scope, local);
 				var j = generatePyArithmeticExpression(exp.indexes.get(1).value ,scope, local);
@@ -1018,7 +1018,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 		} else if (exp instanceof VariableLiteral) { // TODO  fix with the current grammar
 			val variable = exp.variable
 			if (variable.typeobject === null) {
-				println("(Python generator) BEWARE! Variable " + exp.variable.name + " type is null!")
+				println("[Py] BEWARE! Variable " + exp.variable.name + " type is null!")
 			} else if (variable.typeobject.equals("dat")) {
 				return "Table"
 			} else if (variable.typeobject.equals("channel")) {
@@ -1036,8 +1036,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 		} else if (exp instanceof NameObject) {
 			return typeSystem.get(scope).get(exp.name.name + "." + exp.value)
 		} else if (exp instanceof IndexObject) {
-			println(scope + " type system " + typeSystem.get(scope))
-			println("Expression name name: " + exp.name.name)
+//			println(scope + " type system " + typeSystem.get(scope))
+//			println("Expression name name: " + exp.name.name)
 			if (typeSystem.get(scope).get(exp.name.name).contains("Array") || typeSystem.get(scope).get(exp.name.name).contains("Matrix") ) {
 				return typeSystem.get(scope).get(exp.name.name).split("_").get(1);
 			} else {
