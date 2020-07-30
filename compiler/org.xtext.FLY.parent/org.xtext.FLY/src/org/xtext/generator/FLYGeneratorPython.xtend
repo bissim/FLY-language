@@ -496,7 +496,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 									graph_file = urllib.request.urlopen(urllib.request.Request('«path»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
 								else:
 									graph_file = open('«path»','rw')
-								«exp.name» = Graph.importGraph(graph_file, '«separator»', «isDirected», «isWeighted»)
+								«exp.name» = Graph.importGraph(graph_file, '«separator»', is_directed=«isDirected», is_weighted=«isWeighted»)
 							'''
 						}
 						default: {
@@ -1343,7 +1343,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	echo "installing FLY graph"
 	rm -rf fly*
-	wget -q https://github.com/bissim/FLY-graph/releases/download/0.0.1-dev%2B20200706/fly_graph-0.0.1.dev0+20200706-py3-none-any.whl -O fly_graph.whl
+	wget -q https://github.com/bissim/FLY-graph/releases/download/0.0.1-dev%2B20200730/fly_graph-0.0.1.dev0+20200730-py3-none-any.whl -O fly_graph.whl
 	unzip -q -d . fly_graph.whl fly/*
 	rm fly_graph.whl
 	echo "FLY graph installed"
