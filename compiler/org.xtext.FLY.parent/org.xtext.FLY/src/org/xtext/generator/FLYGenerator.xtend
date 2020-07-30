@@ -98,6 +98,7 @@ class FLYGenerator extends AbstractGenerator {
 				if(type_env.equals("smp") && ((element.environment.right as DeclarationObject).features.length==3)){
 					if(((element.environment.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s.contains("python")){
 						pyGen.generatePython(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,true,async);
+						pyGen.graphMethodsReturnTypes = this.graphMethodsReturnTypes
 					}else{
 						jsGen.generateJS(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,true,async);
 					}
@@ -118,6 +119,7 @@ class FLYGenerator extends AbstractGenerator {
 
 					if (language.contains("python")){
 						pyGen.generatePython(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,false,async);
+						pyGen.graphMethodsReturnTypes = this.graphMethodsReturnTypes
 					}else if (language.contains("nodejs")) {
 						jsGen.generateJS(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,false,async);
 					}

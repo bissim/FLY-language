@@ -1,8 +1,11 @@
 package org.xtext.generator
 
+import java.util.ArrayList
+import java.util.Arrays
 import java.util.HashMap
 import java.util.HashSet
 import java.util.List
+import java.util.Map
 import org.eclipse.emf.ecore.EObject
 import org.eclipse.emf.ecore.resource.Resource
 import org.eclipse.xtext.generator.AbstractGenerator
@@ -48,8 +51,6 @@ import org.xtext.fLY.WhileExpression
 import org.xtext.fLY.PostfixOperation
 import org.xtext.fLY.ArrayDefinition
 import org.xtext.fLY.FlyFunctionCall
-import java.util.ArrayList
-import java.util.Arrays
 import org.xtext.fLY.EnvironemtLiteral
 import org.eclipse.xtext.service.AllRulesCache.AllRulesCacheAdapter
 
@@ -72,6 +73,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 	var list_environment = new ArrayList<String>(Arrays.asList("smp","aws","aws-debug","azure"));
 	ArrayList listParams = null
 	List<String> allReqs=null
+
+	Map<String, String> graphMethodsReturnTypes = null
 
 	def generatePython(Resource input, IFileSystemAccess2 fsa, IGeneratorContext context, String name_file,
 		FunctionDefinition func, VariableDeclaration environment, HashMap<String, HashMap<String, String>> scoping,
@@ -105,6 +108,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 		this.isAsync = async
 		this.isLocal = local;
 		doGenerate(input, fsa, context)
+	}
+
+	def setGraphMethodsReturnTypes(Map<String, String> map) {
+		this.graphMethodsReturnTypes = map
 	}
 
 	override doGenerate(Resource input, IFileSystemAccess2 fsa, IGeneratorContext context) {
@@ -1124,42 +1131,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 					return "Integer"
 				}
 			} else if (exp.target.typeobject.equals("graph")) { // TODO check graph method types
-				switch (exp.feature) { // TODO can I use a map here?
-					case "nodeDegree": return "Integer"
-					case "nodeInDegree": return "Integer"
-					case "nodeOutDegree": return "Integer"
-					case "neighbourhood": return "Object[]"
-					case "nodeInEdges": return "Object[]"
-					case "nodeOutEdges": return "Object[]"
-					case "nodeSet": return "Object[]"
-					case "numNodes": return "Integer"
-					case "hasNode": return "Boolean"
-					case "getEdge": return "Object"
-					case "edgeSet": return "Object[]"
-					case "numEdges": return "Integer"
-					case "getEdgeSource": return "Object"
-					case "getEdgeTarget": return "Object"
-					case "getEdgeWeight": return "Double"
-					case "hasEdge": return "Boolean"
-					case "bfsEdges": return "Object[]"
-					case "bfsNodes": return "Object[]"
-					case "bfsTree": return "Graph"
-					case "dfsEdges": return "Object[]"
-					case "dfsNodes": return "Object[]"
-					case "dfsTree": return "Graph"
-					case "isConnected": return "Boolean"
-					case "isStronglyConnected": return "Boolean"
-					case "connectedComponents": return "Object[]"
-					case "connectedSubgraphs": return "Graph[]"
-					case "numberConnectedComponents": return "Integer"
-					case "nodeConnectedComponent": return "Object[]"
-					case "stronglyConnectedComponents": return "Object[]"
-					case "stronglyConnectedSubgraphs": return "Graph[]"
-					case "isDAG": return "Boolean"
-					case "topologicalSort": return "Object[]"
-					case "getMST": return "Graph"
-					default: return "Object"
-				}
+				return this.graphMethodsReturnTypes.getOrDefault(exp.feature, "Object")
 			}
 		} else {
 			return "Object"
