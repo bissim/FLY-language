@@ -121,8 +121,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 			.map[it.lib]
 			.toList
 		allReqs.add("pytz")
-		allReqs.add("networkx")
-		allReqs.add("fly_graph")
+		allReqs.add("networkx") // TODO make networkx and fly-graph optional
+		allReqs.add("fly-graph")
 		if (env.equals("azure"))
 			allReqs.add("azure-storage-queue")
 		saveToRequirements(allReqs, fsa)
@@ -441,62 +441,64 @@ class FLYGeneratorPython extends AbstractGenerator {
 						}
 						case "file":{
 							typeSystem.get(scope).put(exp.name, "File")
-							var path = "";
-							if((exp.right as DeclarationObject).features.get(1).value_f!=null){
-								path = (exp.right as DeclarationObject).features.get(1).value_f.name
-							}else{
-								path = (exp.right as DeclarationObject).features.get(1).value_s.replaceAll('"', '\'');
-							}
+
+							val decFeats = (exp.right as DeclarationObject).features
+							val path = if (decFeats.get(1).value_f !== null)
+								decFeats.get(1).value_f.name.trim
+							else
+								decFeats.get(1).value_s.replaceAll('"', '\'').trim
+							val pathIsURL = this.isURL(path)
+//							println(path + " is URL: " + pathIsURL)
 							return '''
-							if 'http' in «path»:
-								«exp.name» = urllib.request.urlopen(urllib.request.Request(«path»,headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
-							else:
-								«exp.name» = open(«path»,'rw')'''
+								«IF pathIsURL»
+«««								if 'http' in «path»:
+									«exp.name» = urllib.request.urlopen(urllib.request.Request('«path»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
+«««								else:
+								«ELSE»
+									«exp.name» = open('«path»', 'rw')
+								«ENDIF»
+							'''
 						}
-						case "graph": { // TODO check graph integration in Python (aws-debug)
-							var path = ""
-							if((exp.right as DeclarationObject).features.get(1).value_f != null){
-								path = (exp.right as DeclarationObject).features.get(1).value_f.name
-							}else{
-								path = (exp.right as DeclarationObject).features.get(1).value_s.replaceAll('"', '\'');
-							}
-							var separator = (exp.right as DeclarationObject).features.get(2).value_s
-							//var class = (exp.right as DeclarationObject).features.get(3).value_s // we can discard node class in Python
-							//var numParams = (exp.environment.right as DeclarationObject).features.length
-							var isDirected = (exp.right as DeclarationObject).features.get(4).value_s
-							var isWeighted = (exp.right as DeclarationObject).features.get(5).value_s
-
-							// set direction and weight properties of graph
-							if (isDirected == "true")
-							{
-								isDirected = "True"
-							}
-							else
-							{
-								isDirected = "False"
-							}
-
-							if (isWeighted == "true")
-							{
-								isWeighted = "True"
-							}
-							else
-							{
-								isWeighted = "False"
-							}
-
+						case "graph": {
 							typeSystem.get(scope).put(exp.name, "Graph")
-							// TODO implement python logic to import a graph from file
+
+							val decFeats = (exp.right as DeclarationObject).features
+							val sourceType = decFeats.get(1).feature
+							val source = if (sourceType == "path")
+									if (decFeats.get(1).value_f !== null)
+										decFeats.get(1).value_f.name
+									else
+										decFeats.get(1).value_s.replaceAll('"', '\'')
+								else // leave it as is for the moment
+									decFeats.get(1).value_f.name
+							val separator = decFeats.get(2).value_s
+							//var nodeClass = decFeats.get(3).value_s // we can discard node class in Python
+							var isDirected = if (decFeats.size > 4 && decFeats.get(4).value_s == "true")
+									"True"
+								else
+									"False"
+							var isWeighted = if (decFeats.size > 5 && decFeats.get(5).value_s == "true")
+									"True"
+								else
+									"False"
+
 							// 1st param: file path
 							// 2nd param: separator character in CSV file
 							// 3rd param: imported graph is directed
 							// 4th param: imported graph is weighted
 							return '''
-								if 'http' in '«path»':
-									graph_file = urllib.request.urlopen(urllib.request.Request('«path»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
-								else:
-									graph_file = open('«path»','rw')
-								«exp.name» = Graph.importGraph(graph_file, '«separator»', is_directed=«isDirected», is_weighted=«isWeighted»)
+								«IF sourceType == "file"»
+									«exp.name» = Graph.importGraph(«source», '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
+								«ELSEIF sourceType == "path"»
+									«IF this.isURL(source)»
+«««									if 'http' in '«source»':
+										graph_file = urllib.request.urlopen(urllib.request.Request('«source»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
+									«ELSE»
+«««									else:
+										graph_file = open('«source»','rw')
+									«ENDIF»
+									«exp.name» = Graph.importGraph(graph_file, '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
+								«ENDIF»
 							'''
 						}
 						default: {
@@ -585,6 +587,15 @@ class FLYGeneratorPython extends AbstractGenerator {
 		}
 
 		return s
+	}
+
+	def isURL(String path) {
+		// check whether file path starts with 'http',
+		// 'https', 'ftp', 'ftps', or 'sftp'
+		// and is a valid URL
+		// source: https://stackoverflow.com/a/3809435/5674302
+		val httpUrlRegExp = "^((ht|f)tps?|sftp):\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{2,256}\\.[a-z]{2,63}\\b([-a-zA-Z0-9@:%_\\+.~#?&//=]*)"
+		return path.matches(httpUrlRegExp)
 	}
 
 	def generateNativeEpression(NativeExpression expression, String string, boolean b) {
@@ -1341,9 +1352,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 	«ENDIF»
 	«IF allReqs.contains("fly_graph")»
 
-	echo "installing FLY graph"
 	rm -rf fly*
-	wget -q https://github.com/bissim/FLY-graph/releases/download/0.0.1-dev%2B20200730/fly_graph-0.0.1.dev0+20200730-py3-none-any.whl -O fly_graph.whl
+	wget -q https://files.pythonhosted.org/packages/5b/c0/3ac0ed450ef696a3ccaa13c6d4f17c9aa1b8b204092076793564181de60a/fly_graph-1.0.0-py3-none-any.whl -O fly_graph.whl
 	unzip -q -d . fly_graph.whl fly/*
 	rm fly_graph.whl
 	echo "FLY graph installed"

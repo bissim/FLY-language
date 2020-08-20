@@ -167,49 +167,47 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	def CharSequence compileJava(Resource resource) '''
+		import java.io.BufferedReader;
+		import java.io.BufferedWriter;
 		import java.io.File;
 		import java.io.FileInputStream;
-		import java.io.InputStreamReader;
 		import java.io.FileOutputStream;
-		import java.io.OutputStreamWriter;
+		import java.io.FileWriter;
+		import java.io.InputStream;
+		import java.io.InputStreamReader;
 		import java.io.IOException;
+		import java.io.OutputStreamWriter;
+		import java.net.ServerSocket;
+		import java.net.Socket;
+		import java.net.URL;
 		import java.nio.ByteBuffer;
 		import java.nio.channels.FileChannel;
 		import java.nio.file.StandardOpenOption;
-		import java.io.InputStream;
-		import java.net.ServerSocket;
-		import java.net.Socket;
-		import java.io.BufferedReader;
+		import java.time.LocalDate;
 		import java.util.ArrayList;
 		import java.util.Arrays;
+		import java.util.Collections;
+		import java.util.Comparator;
+		import java.util.HashMap;
 		import java.util.List;
+		import java.util.Map;
+		import java.util.Random;
+		import java.util.Scanner;
+		import java.util.concurrent.Callable;
+		import java.util.concurrent.ExecutionException;
+		import java.util.concurrent.Executors;
+		import java.util.concurrent.ExecutorService;
+		import java.util.concurrent.Future;
+		import java.util.concurrent.LinkedTransferQueue;
+		import java.util.concurrent.atomic.AtomicInteger;
 		import java.util.zip.ZipEntry;
 		import java.util.zip.ZipOutputStream;
-		import java.io.BufferedWriter;
-		import java.io.FileWriter;
-		import java.io.IOException;
-		import java.util.HashMap;
-		import java.time.LocalDate;
 		import tech.tablesaw.api.Table;
 		import tech.tablesaw.io.csv.CsvReadOptions;
 		import tech.tablesaw.columns.Column;
 		import tech.tablesaw.selection.Selection;
 		import tech.tablesaw.table.Rows;
 		import tech.tablesaw.api.Row;
-		import java.util.concurrent.LinkedTransferQueue;
-		import java.util.concurrent.ExecutorService;
-		import java.util.concurrent.Executors;
-		import java.util.concurrent.ExecutionException;
-		import java.util.ArrayList;
-		import java.util.List;
-		import java.util.concurrent.Callable;
-		import java.util.concurrent.Future;
-		import java.util.concurrent.atomic.AtomicInteger;
-		import java.util.Random;
-		import java.util.Collections;
-		import java.util.Comparator;
-		import java.util.Map;
-		import java.util.Scanner;
 		import org.apache.commons.io.FileUtils;
 		«IF checkAWS() || checkAWSDebug()»
 		import com.amazonaws.AmazonClientException;
@@ -267,7 +265,7 @@ class FLYGenerator extends AbstractGenerator {
 		import isislab.azureclient.AzureClient;
 		«ENDIF»
 		«IF checkGraph()»
-		import isislab.fly.Graph;
+		import io.github.bissim.fly.Graph;
 		«ENDIF»
 
 		public class «name» {
@@ -752,28 +750,37 @@ class FLYGenerator extends AbstractGenerator {
 					}
 					case "file":{ //TO-D0: add support to directory
 						typeSystem.get(scope).put(dec.name, "File")
-						if((dec.right as DeclarationObject).features.get(1).value_f == null){
-							var path = (dec.right as DeclarationObject).features.get(1).value_s
-							var tmp = path.split("/")
-							var name = tmp.get(tmp.length-1)
-							if(name.split(".").length!=2)
+
+						val decFeats = (dec.right as DeclarationObject).features
+						val path = if (decFeats.get(1).value_f !== null)
+								decFeats.get(1).value_f.name.trim
+							else
+								decFeats.get(1).value_s.trim
+
+						if (decFeats.get(1).value_f === null) {
+							val tmp = path.split("/")
+							val name = tmp.get(tmp.length - 1)
+							if (name.split(".").length != 2)
 								typeSystem.get(scope).put(dec.name, "Directory")
-							return '''
-								 «IF dec.onCloud»
-								 	«deployFileOnCloud(dec,id_execution)»
-								 «ELSE»
-								 	File «dec.name» = new File("«path»");
-								 «ENDIF»
-							'''
-						}else{
-							return '''
-								«IF dec.onCloud»
-								 	«deployFileOnCloud(dec,id_execution)»
-								 «ELSE»
-								 	File «dec.name» = new File(«(dec.right as DeclarationObject).features.get(1).value_f.name»);
-								«ENDIF»
-							'''
 						}
+
+						val pathIsURL = pyGen.isURL(path)
+						val tempFile = path.split("/").last
+						return '''
+							«IF dec.onCloud»
+								«deployFileOnCloud(dec, id_execution)»
+							«ELSE»
+								«IF pathIsURL»
+									File «dec.name» = new File("«tempFile»");
+									FileUtils.copyURLToFile(
+										new URL("«path»"),
+										«dec.name»
+									);
+								«ELSE»
+									File «dec.name» = new File("«path»");
+								«ENDIF»
+							«ENDIF»
+						'''
 					}
 					case "dataframe":{
 						var path = (dec.right as DeclarationObject).features.get(1).value_s
@@ -791,24 +798,53 @@ class FLYGenerator extends AbstractGenerator {
 						'''
 					}
 					case "graph": {
-						val path = (dec.right as DeclarationObject).features.get(1).value_s
-						val separator = (dec.right as DeclarationObject).features.get(2).value_s
-						val nodeClass = (dec.right as DeclarationObject).features.get(3).value_s
-						val isDirected = (dec.right as DeclarationObject).features.get(4).value_s
-						val isWeighted = (dec.right as DeclarationObject).features.get(5).value_s
 						typeSystem.get(scope).put(dec.name, "Graph")
+
+						val decFeats = (dec.right as DeclarationObject).features
+						val sourceType = decFeats.get(1).feature
+						val source = if (sourceType == "path")
+								decFeats.get(1).value_s.trim
+							else
+								decFeats.get(1).value_f.name.trim
+						val separator = decFeats.get(2).value_s
+						val nodeClass = decFeats.get(3).value_s
+						val isDirected = if (decFeats.size > 4 && decFeats.get(4).value_s == "true")
+								"true"
+							else
+								"false"
+						val isWeighted = if (decFeats.size > 5 && decFeats.get(5).value_s == "true")
+								"true"
+							else
+								"false"
+
 						// 1st param: file path
-						// 2nd param: separator
+						// 2nd param: separator character in CSV file
 						// 3rd param: Java node class
-						// 4th param: isDirected
-						// 5th param: isWeighted
+						// 4th param: imported graph is directed
+						// 5th param: imported graph is weighted
 						return '''
+							«IF sourceType == "path"»
+								«IF pyGen.isURL(source)»
+									«val fileName = source.split("/").last»
+									File «dec.name»File = new File("«fileName»");
+									FileUtils.copyURLToFile(
+										new URL("«source»"),
+										«dec.name»File
+									);
+								«ELSE»
+									File «dec.name»File = new File("«source»");
+								«ENDIF»
+							«ENDIF»
 							Graph<«nodeClass», Object> «dec.name» = Graph.importGraph(
-								"«path»",
+								«IF sourceType == "file"»
+									«source»,
+								«ELSEIF sourceType == "path"»
+									«dec.name»File,
+								«ENDIF»
 								"«separator»",
 								«nodeClass».class,
-								«IF isWeighted == "true"»true«ELSE»false«ENDIF»,
-								«IF isDirected == "true"»true«ELSE»false«ENDIF»
+								«isWeighted»,
+								«isDirected»
 							);
 						'''
 					}
@@ -1188,105 +1224,138 @@ class FLYGenerator extends AbstractGenerator {
 		}
 	}
 
-	def deployFileOnCloud(VariableDeclaration dec,long id) {
-		var env = (dec.environment.get(0).right as DeclarationObject).features.get(0).value_s;
-		if((dec.right as DeclarationObject).features.get(1).value_f != null){
-			var path = (dec.right as DeclarationObject).features.get(1).value_f
+	def deployFileOnCloud(VariableDeclaration dec, long id) {
+		val decFileFeats = (dec.right as DeclarationObject).features
+		val env = (dec.environment.get(0).right as DeclarationObject).features.get(0).value_s
+		val decEnvName = dec.environment.get(0).name
+
+		if (decFileFeats.get(1).value_f !== null) {
+			var path = decFileFeats.get(1).value_f.name.trim
 			switch (env) {
 				case "aws":
 					return '''
-						if(!__s3_«dec.environment.get(0).name».doesBucketExist("bucket-"+__id_execution)){
-							__s3_«dec.environment.get(0).name».createBucket("bucket-"+__id_execution);
+						if (!__s3_«decEnvName».doesBucketExist("bucket-" + __id_execution)) {
+							__s3_«decEnvName».createBucket("bucket-" + __id_execution);
 						}
-						ListObjectsV2Result __result__listObjects_«id» = __s3_«dec.environment.get(0).name».listObjectsV2("bucket-"+__id_execution);
+						ListObjectsV2Result __result__listObjects_«id» = __s3_«decEnvName».listObjectsV2("bucket-" + __id_execution);
 						List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
-						Boolean __exists_«id»=false;
+						Boolean __exists_«id» = false;
 						for (S3ObjectSummary os: __result_objects_«id») {
-							if(os.getKey().equals(«path.name».substring(«path.name».lastIndexOf("/")+1))){
+							if (os.getKey().equals(«path».substring(«path».lastIndexOf("/") + 1))) {
 								__exists_«id» = true;
 								break;
 							}
 						}
-						if(!__exists_«id»){
-							PutObjectRequest __putObjectRequest = new PutObjectRequest("bucket-"+__id_execution, «path.name».substring(«path.name».lastIndexOf("/")+1) , new File(«path.name»));
+						if (!__exists_«id») {
+							PutObjectRequest __putObjectRequest = new PutObjectRequest(
+									"bucket-" + __id_execution,
+									«path».substring(«path».lastIndexOf("/") + 1),
+									new File(«path»)
+							);
 							__putObjectRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
-							__s3_«dec.environment.get(0).name».putObject(__putObjectRequest);
+							__s3_«decEnvName».putObject(__putObjectRequest);
 						}
 					'''
 				case "aws-debug":
 					return '''
-						if(!__s3_«dec.environment.get(0).name».doesBucketExist("bucket-"+__id_execution)){
-							__s3_«dec.environment.get(0).name».createBucket("bucket-"+__id_execution);
+						if (!__s3_«decEnvName».doesBucketExist("bucket-" + __id_execution)) {
+							__s3_«decEnvName».createBucket("bucket-" + __id_execution);
 						}
-						ListObjectsV2Result __result__listObjects_«id» = __s3.listObjectsV2("bucket-"+__id_execution);
+						ListObjectsV2Result __result__listObjects_«id» = __s3.listObjectsV2("bucket-" + __id_execution);
 						List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
-						Boolean __exists_«id»=false;
+						Boolean __exists_«id» = false;
 						for (S3ObjectSummary os: __result_objects_«id») {
-							if(os.getKey().equals(«path.name»)){
+							if(os.getKey().equals(«path»)){
 								__exists_«id» = true;
 								break;
 							}
 						}
-						if(!__exists_«id»){
-							PutObjectRequest __putObjectRequest = new PutObjectRequest("bucket-"+__id_execution, «path.name» , new File(«path.name»));
+						if (!__exists_«id») {
+							PutObjectRequest __putObjectRequest = new PutObjectRequest(
+									"bucket-" + __id_execution,
+									«path»,
+									new File(«path»)
+							);
 							__putObjectRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
 							__s3.putObject(__putObjectRequest);
 						}
 					'''
 				case "azure":
 					return '''
-						«dec.environment.get(0).name».uploadFile(new File(«path.name»));
+						«decEnvName».uploadFile(new File(«path»));
 					'''
 				default:
 					return ''''''
 			}
-		}else{
-			var path = (dec.right as DeclarationObject).features.get(1).value_s
-			if( !(path.contains("https://") || path.contains("http://")) ){ // local
-				var name_file_ext = path.split("/").last
-				var name_file = name_file_ext.substring(0,name_file_ext.indexOf('.')).replaceAll("-","_")
-				switch (env) {
-					case "aws":
-						return '''
-							ListObjectsV2Result __result__listObjects_«id» = __s3_«dec.environment.get(0).name».listObjectsV2("bucket-"+__id_execution);
-							List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
-							Boolean __exists_«name_file»_«id»=false;
-							for (S3ObjectSummary os: __result_objects_«id») {
-								if(os.getKey().equals("«name_file_ext»")){
-									__exists_«name_file»_«id» = true;
-									break;
-								}
+		} else {
+			val path = decFileFeats.get(1).value_s.trim
+			val nameFileExt = path.split("/").last
+			val nameFile = nameFileExt
+					.substring(0, nameFileExt.lastIndexOf('.'))
+					.replaceAll("-", "_")
+					.replaceAll("\\.", "_")
+
+			val remoteFileDownload = if (pyGen.isURL(path)) { // make remote file local
+				// prepend file download
+				'''
+				File «dec.name» = new File("«nameFileExt»");
+				FileUtils.copyURLToFile(
+					new URL("«path»"),
+					«dec.name»
+				);
+				
+				'''
+			} else ''''''
+
+			switch (env) {
+				case "aws":
+					return remoteFileDownload + '''
+						ListObjectsV2Result __result__listObjects_«id» = __s3_«decEnvName».listObjectsV2("bucket-" + __id_execution);
+						List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
+						Boolean __exists_«nameFile»_«id» = false;
+						for (S3ObjectSummary os: __result_objects_«id») {
+							if (os.getKey().equals("«nameFileExt»")) {
+								__exists_«nameFile»_«id» = true;
+								break;
 							}
-							if(!__exists_«name_file»_«id»){
-								PutObjectRequest __putObjectRequest = new PutObjectRequest("bucket-"+__id_execution, "«name_file_ext»" , new File("«path»"));
-								__putObjectRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
-								__s3_«dec.environment.get(0).name».putObject(__putObjectRequest);
+						}
+						if (!__exists_«nameFile»_«id») {
+							PutObjectRequest __putObjectRequest = new PutObjectRequest(
+									"bucket-" + __id_execution,
+									"«nameFileExt»",
+									«dec.name»
+							);
+							__putObjectRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
+							__s3_«decEnvName».putObject(__putObjectRequest);
+						}
+					'''
+				case "aws-debug":
+					return remoteFileDownload + '''
+						ListObjectsV2Result __result__listObjects_«id» = __s3_«decEnvName».listObjectsV2("bucket-" + __id_execution);
+						List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
+						Boolean __exists_«nameFile»_«id» = false;
+						for (S3ObjectSummary os: __result_objects_«id») {
+							if (os.getKey().equals("«nameFileExt»")) {
+								__exists_«nameFile»_«id» = true;
+								break;
 							}
-						'''
-					case "aws-debug":
-						return '''
-							ListObjectsV2Result __result__listObjects_«id» = __s3.listObjectsV2("bucket-"+__id_execution);
-							List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
-							Boolean __exists_«name_file»_«id»=false;
-							for (S3ObjectSummary os: __result_objects_«id») {
-								if(os.getKey().equals("«name_file_ext»")){
-									__exists_«name_file»_«id» = true;
-									break;
-								}
-							}
-							if(!__exists_«name_file»_«id»){
-								PutObjectRequest __putObjectRequest = new PutObjectRequest("bucket-"+__id_execution, "«name_file_ext»" , new File("«path»"));
-								__putObjectRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
-								__s3.putObject(__putObjectRequest);
-							}
-						'''
-					case "azure":
-						return '''
-							«dec.environment.get(0).name».uploadFile(new File("«path»"));
-						'''
-					default:
-						return ''''''
-				}
+						}
+						if (!__exists_«nameFile»_«id») {
+							PutObjectRequest __putObjectRequest = new PutObjectRequest(
+									"bucket-" + __id_execution,
+									"«nameFileExt»" ,
+									«dec.name»
+							);
+							__putObjectRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
+							__s3_«decEnvName».putObject(__putObjectRequest);
+						}
+					'''
+				case "azure":
+					return remoteFileDownload + '''
+						«decEnvName».uploadFile(«dec.name»);
+					'''
+				default:
+					return ''''''
 			}
 		}
 	}
