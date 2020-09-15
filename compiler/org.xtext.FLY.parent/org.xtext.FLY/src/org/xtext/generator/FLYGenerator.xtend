@@ -3094,13 +3094,13 @@ class FLYGenerator extends AbstractGenerator {
 		var returnExp = checkReturn(definition.body)
 
 		var s = '''
-				protected static «IF returnExp != null» «valuateArithmeticExpression(returnExp.expression,definition.name)»«ELSE» Object«ENDIF» «definition.name»(«FOR params : definition.parameters»«getParameterType(definition.name,params,definition.parameters.indexOf(params))» «(params as VariableDeclaration).name»«IF(!params.equals(definition.parameters.last))», «ENDIF»«ENDFOR»)throws Exception{
-				«FOR el : definition.body.expressions»
-					«generateExpression(el,definition.name)»
-				«ENDFOR»
-				«IF returnExp == null»
-					return null;
-				«ENDIF»
+				protected static «IF returnExp !== null»«valuateArithmeticExpression(returnExp.expression, definition.name)»«ELSE»Object«ENDIF» «definition.name»(«FOR params : definition.parameters»«getParameterType(definition.name, params, definition.parameters.indexOf(params))» «(params as VariableDeclaration).name»«IF(!params.equals(definition.parameters.last))», «ENDIF»«ENDFOR») throws Exception {
+					«FOR el : definition.body.expressions»
+						«generateExpression(el, definition.name)»
+					«ENDFOR»
+					«IF returnExp === null»
+						return null;
+					«ENDIF»
 				}
 
 		'''
@@ -3108,7 +3108,7 @@ class FLYGenerator extends AbstractGenerator {
 //		println("TypeSystem:")
 //		println(typeSystem.get(definition.name))
 //		println("Definition: " + definition.name)
-		if (definition.body.expressions.filter(NativeExpression).length !=0)
+		if (definition.body.expressions.filter(NativeExpression).length != 0)
 			return ''''''
 		return s
 	}
@@ -3430,10 +3430,15 @@ class FLYGenerator extends AbstractGenerator {
 		return false
 	}
 
-	def Boolean checkGraph(){
-		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-			filter[(right as DeclarationObject).features.get(0).value_s.equals("graph")]
-		){
+	private def Boolean checkGraph() {
+		for (
+			VariableDeclaration env: res
+			.allContents
+			.toIterable
+			.filter(VariableDeclaration)
+			.filter[right instanceof DeclarationObject]
+			.filter[(right as DeclarationObject).features.get(0).value_s.equals("graph")]
+		) {
 			return true
 		}
 		return false

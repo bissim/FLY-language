@@ -52,7 +52,6 @@ import org.xtext.fLY.PostfixOperation
 import org.xtext.fLY.ArrayDefinition
 import org.xtext.fLY.FlyFunctionCall
 import org.xtext.fLY.EnvironemtLiteral
-import org.eclipse.xtext.service.AllRulesCache.AllRulesCacheAdapter
 
 class FLYGeneratorPython extends AbstractGenerator {
 	String name = null
@@ -121,8 +120,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 			.map[it.lib]
 			.toList
 		allReqs.add("pytz")
-		allReqs.add("networkx") // TODO make networkx and fly-graph optional
-		allReqs.add("fly-graph")
+		if (checkGraph()) {
+			allReqs.add("networkx")
+			allReqs.add("fly-graph")
+		}
 		if (env.equals("azure"))
 			allReqs.add("azure-storage-queue")
 		saveToRequirements(allReqs, fsa)
@@ -263,8 +264,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«ENDIF»
 			import json
 			import urllib.request
-			«IF allReqs.contains("networkx")»
-			from fly.graph import Graph
+			«IF checkGraph()»
+			from fly.graph.graph import Graph
 			«ENDIF»
 
 			«IF env.contains("aws")»
@@ -587,15 +588,6 @@ class FLYGeneratorPython extends AbstractGenerator {
 		}
 
 		return s
-	}
-
-	def isURL(String path) {
-		// check whether file path starts with 'http',
-		// 'https', 'ftp', 'ftps', or 'sftp'
-		// and is a valid URL
-		// source: https://stackoverflow.com/a/3809435/5674302
-		val httpUrlRegExp = "^((ht|f)tps?|sftp):\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{2,256}\\.[a-z]{2,63}\\b([-a-zA-Z0-9@:%_\\+.~#?&//=]*)"
-		return path.matches(httpUrlRegExp)
 	}
 
 	def generateNativeEpression(NativeExpression expression, String string, boolean b) {
@@ -1350,10 +1342,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 	rm decorator.whl
 	echo "networkx installed"
 	«ENDIF»
-	«IF allReqs.contains("fly_graph")»
+	«IF allReqs.contains("fly-graph")»
 
+	echo "installing FLY graph"
 	rm -rf fly*
-	wget -q https://files.pythonhosted.org/packages/5b/c0/3ac0ed450ef696a3ccaa13c6d4f17c9aa1b8b204092076793564181de60a/fly_graph-1.0.0-py3-none-any.whl -O fly_graph.whl
+	wget -q https://files.pythonhosted.org/packages/dd/f9/fe96bdc5641410d19c635cf6de80fb0ea0bafb4860d1317d53dca4488a7a/fly_graph-1.1.0.dev4-py3-none-any.whl -O fly_graph.whl
 	unzip -q -d . fly_graph.whl fly/*
 	rm fly_graph.whl
 	echo "FLY graph installed"
@@ -1616,10 +1609,34 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	def CharSequence compileScriptUndeploy(Resource resource, String name, boolean local){
 		switch this.env {
-			   case "aws": AWSUndeploy(resource,name,local,false)
-			   case "aws-debug": AWSDebugUndeploy(resource,name,local,true)
-			   case "azure": AzureUndeploy(resource,name,local)
-			   default: this.env+" not supported"
-			}
+			case "aws": AWSUndeploy(resource,name,local,false)
+			case "aws-debug": AWSDebugUndeploy(resource,name,local,true)
+			case "azure": AzureUndeploy(resource,name,local)
+			default: this.env+" not supported"
+		}
 	}
+
+	protected def isURL(String path) {
+		// check whether file path starts with 'http',
+		// 'https', 'ftp', 'ftps', or 'sftp'
+		// and is a valid URL
+		// source: https://stackoverflow.com/a/3809435/5674302
+		val httpUrlRegExp = "^((ht|f)tps?|sftp):\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{2,256}\\.[a-z]{2,63}\\b([-a-zA-Z0-9@:%_\\+.~#?&//=]*)"
+		return path.matches(httpUrlRegExp)
+	}
+
+	private def Boolean checkGraph() { // FIXME this should not be the exact copy of same-name method from FLYGenerator
+		for (
+			VariableDeclaration env: resourceInput
+			.allContents
+			.toIterable
+			.filter(VariableDeclaration)
+			.filter[right instanceof DeclarationObject]
+			.filter[(right as DeclarationObject).features.get(0).value_s.equals("graph")]
+		) {
+			return true
+		}
+		return false
+	}
+
 }
