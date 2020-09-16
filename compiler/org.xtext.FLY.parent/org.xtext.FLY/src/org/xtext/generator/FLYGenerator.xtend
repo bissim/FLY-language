@@ -2753,7 +2753,7 @@ class FLYGenerator extends AbstractGenerator {
 
 	def generateChannelReceive(ChannelReceive receive, String scope) {
 		return '''
-//			«(receive.target as VariableDeclaration).name».take()'''
+			«(receive.target as VariableDeclaration).name».take()'''
 //		var env = (((receive.target.environment.right as DeclarationObject).features.get(0)) as DeclarationFeature).
 //			value_s
 //		if (env.equals("smp")) {
