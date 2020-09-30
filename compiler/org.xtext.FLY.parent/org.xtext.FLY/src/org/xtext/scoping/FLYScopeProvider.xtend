@@ -3,21 +3,20 @@
  */
 package org.xtext.scoping
 
+import static extension org.eclipse.xtext.EcoreUtil2.*
+
+import java.util.List
 import org.eclipse.emf.ecore.EObject
 import org.eclipse.emf.ecore.EReference
+import org.eclipse.xtext.scoping.IScope
+import org.eclipse.xtext.scoping.Scopes
 import org.xtext.fLY.BlockExpression
 import org.xtext.fLY.VariableDeclaration
 import org.xtext.fLY.FunctionDefinition
 import org.xtext.fLY.Fly
-import static extension org.eclipse.xtext.EcoreUtil2.*
-import java.util.List
-import org.eclipse.xtext.scoping.IScope
-import org.eclipse.xtext.scoping.Scopes
 import org.xtext.fLY.ForExpression
 import org.xtext.fLY.ConstantDeclaration
 import org.xtext.fLY.DeclarationObject
-import java.util.ArrayList
-import java.util.Arrays
 
 /**
  * This class contains custom scoping description.
@@ -27,7 +26,7 @@ import java.util.Arrays
  */
 class FLYScopeProvider extends AbstractFLYScopeProvider {
 
-	var list_environment = new ArrayList<String>(Arrays.asList("smp","aws-debug","aws","azure"));
+	var list_environment = #["aws", "aws-debug", "azure", "smp"]
 	override getScope(EObject context, EReference reference) {
 
 		val pBlock = getParentBlock(context)

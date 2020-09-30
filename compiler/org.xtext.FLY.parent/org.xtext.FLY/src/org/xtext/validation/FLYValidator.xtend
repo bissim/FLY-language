@@ -3,25 +3,10 @@
  */
 package org.xtext.validation
 
-import com.google.inject.Inject
-import org.xtext.fLY.BinaryOperation
-//import org.xtext.typing.FlyTypeProvider
-import org.eclipse.emf.ecore.EReference
-import org.xtext.fLY.ArithmeticExpression
-import org.xtext.typing.FlyType
-import org.xtext.fLY.FLYPackage
-import org.eclipse.xtext.validation.Check
-import org.xtext.fLY.PostfixOperation
-import org.xtext.fLY.UnaryOperation
-import org.eclipse.emf.ecore.EObject
-import org.xtext.fLY.FunctionDefinition
-import org.xtext.fLY.Fly
-import org.xtext.fLY.FunctionReturn
 import org.xtext.fLY.VariableDeclaration
 import org.xtext.fLY.DeclarationObject
 import org.xtext.fLY.FlyFunctionCall
-import java.util.ArrayList
-import java.util.Arrays
+import org.xtext.fLY.FLYPackage
 
 /**
  * This class contains custom validation rules. 
@@ -46,8 +31,7 @@ class FLYValidator extends AbstractFLYValidator {
 	public static val WRONG_AZURE_CONC = ""
 	public static val WRONG_AZURE_TIME = ""
 	
-	public static ArrayList listEnvironment = new ArrayList(Arrays.asList("aws","aws-local","azure","local"));
-	
+	public static val listEnvironment = #["aws", "aws-debug", "azure", "smp"]
 	
 	//@Check
 	def checkVariableDeclaration(VariableDeclaration dec){
