@@ -3,11 +3,14 @@
  */
 package org.xtext.generator
 
+import java.util.ArrayList
+import java.util.HashMap
+import java.util.List
+import com.google.inject.Inject
+import org.eclipse.emf.ecore.EObject
 import org.eclipse.emf.ecore.resource.Resource
-import org.eclipse.xtext.generator.AbstractGenerator
 import org.eclipse.xtext.generator.IFileSystemAccess2
 import org.eclipse.xtext.generator.IGeneratorContext
-import java.util.HashMap
 import org.xtext.fLY.FunctionDefinition
 import org.xtext.fLY.Expression
 import org.xtext.fLY.VariableDeclaration
@@ -39,7 +42,6 @@ import org.xtext.fLY.CastExpression
 import org.xtext.fLY.MathFunction
 import org.xtext.fLY.FunctionInput
 import org.xtext.fLY.NameObjectDef
-import org.eclipse.emf.ecore.EObject
 import org.xtext.fLY.Fly
 import org.xtext.fLY.VariableFunction
 import org.xtext.fLY.RangeLiteral
@@ -49,138 +51,87 @@ import org.xtext.fLY.FlyFunctionCall
 import org.xtext.fLY.SortExpression
 import org.xtext.fLY.LocalFunctionInput
 import org.xtext.fLY.TimeFunction
-import com.google.inject.Inject
 import org.xtext.fLY.ArrayDefinition
 import org.xtext.fLY.ConstantDeclaration
 import org.xtext.fLY.ArrayInit
 import org.xtext.fLY.ArrayValue
 import org.xtext.fLY.ForIndex
 import org.xtext.fLY.NativeExpression
-import java.util.ArrayList
-import java.util.Arrays
-import org.xtext.fLY.EnvironemtLiteral
+import org.xtext.fLY.EnvironmentLiteral
 
 /**
  * Generates code from your model files on save.
  * 
  * See https://www.eclipse.org/Xtext/documentation/303_runtime_concepts.html#code-generation
  */
-class FLYGenerator extends AbstractGenerator {
+class FLYGenerator extends FLYAbstractGenerator {
 
 	@Inject FLYGeneratorPython pyGen
-	@Inject FLYGeneratorJs	jsGen
+	@Inject FLYGeneratorJs jsGen
 
-	private HashMap<String, HashMap<String, String>> typeSystem = new HashMap<String, HashMap<String, String>>(); // memory hash
-	var name = ""
-	var func_ID = 0
-	var file_deploy_id = 0
-	var id_execution = System.currentTimeMillis
-	var last_func_result = null
-	var deployed_function = new HashMap<String,ArrayList<String>>();
-	var list_environment = new ArrayList<String>(Arrays.asList("smp","aws","aws-debug","azure"));
-	Resource res = null
+	var funcID = 0
+//	var fileDeployID = 0
+	var lastFuncResult = null
+	var deployedFunction = new HashMap<String, List<String>>
 
-	val graphMethodsReturnTypes = this.initializeGraphMethodsReturnTypes
-
-	override void doGenerate(Resource resource, IFileSystemAccess2 fsa, IGeneratorContext context) {
-		if(resource.allContents.size >0 ){
+	override doGenerate(
+		Resource resource,
+		IFileSystemAccess2 fsa,
+		IGeneratorContext context
+	) {
+		if (resource.allContents.size > 0) {
 			res = resource;
-			var name_extension = resource.URI.toString.split('/').last
-			name = name_extension.toString.split('.fly').get(0)
+			val flyFileName = resource.URI.toString.split('/').last
+			fileName = flyFileName.toString.split('.fly').get(0)
+
 			// generate .java file
-			typeSystem.put("main", new HashMap<String, String>())
-			fsa.generateFile(name + ".java", resource.compileJava)
+			typeSystem.put("main", new HashMap<String, String>)
+			arraySystem.put("main", new HashMap<String, List<String>>)
+			fsa.generateFile(fileName + ".java", resource.compileJava(isLocal))
+
 			// generate .js or .py file
-			for (element : resource.allContents.toIterable.filter(FlyFunctionCall)) {
-				var type_env = ((element.environment.right as DeclarationObject).features.get(0) as DeclarationFeature).value_s;
-				var async = element.isAsync;
-				if(type_env.equals("smp") && ((element.environment.right as DeclarationObject).features.length==3)){
-					if(((element.environment.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s.contains("python")){
-						pyGen.generatePython(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,true,async);
+			for (element: resource.allContents.toIterable.filter(FlyFunctionCall)) {
+				val elementFields = (element.environment.right as DeclarationObject).features
+				var typeEnv = (elementFields.get(0) as DeclarationFeature).value_s
+				var async = element.isAsync
+				var language = ""
+				if (typeEnv.equals("smp") && (elementFields.length == 3)) {
+					language = (elementFields.get(2) as DeclarationFeature).value_s
+					if (language.contains("python")) {
 						pyGen.graphMethodsReturnTypes = this.graphMethodsReturnTypes
-					}else{
-						jsGen.generateJS(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,true,async);
+						pyGen.arraySystem = this.arraySystem
+						pyGen.generatePython(resource,fsa,context,fileName,element.target,element.environment,typeSystem,idExecution,isLocal,async)
+					} else if (language.contains("nodejs")) {
+						// TODO set graph methods return types and array system maps
+						jsGen.generateJS(resource,fsa,context,fileName,element.target,element.environment,typeSystem,idExecution,isLocal,async)
 					}
 				}
-				if (type_env != "smp") {
-					var language =""
-					switch type_env {
-						case "aws":{
-							language = ((element.environment.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s;
+				if (typeEnv != "smp") {
+					isLocal = false
+					language = switch typeEnv {
+						case "aws",
+						case "aws-debug": {
+							(elementFields.get(5) as DeclarationFeature).value_s
 						}
-						case "aws-debug":{
-							language = ((element.environment.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s;
-						}
-						case "azure":{
-							language = ((element.environment.right as DeclarationObject).features.get(6) as DeclarationFeature).value_s;
+						case "azure": {
+							(elementFields.get(6) as DeclarationFeature).value_s
 						}
 					}
 
-					if (language.contains("python")){
-						pyGen.generatePython(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,false,async);
+					if (language.contains("python")) {
 						pyGen.graphMethodsReturnTypes = this.graphMethodsReturnTypes
-					}else if (language.contains("nodejs")) {
-						jsGen.generateJS(resource,fsa,context,name,element.target,element.environment,typeSystem,id_execution,false,async);
+						pyGen.arraySystem = this.arraySystem
+						pyGen.generatePython(resource,fsa,context,fileName,element.target,element.environment,typeSystem,idExecution,isLocal,async)
+					} else if (language.contains("nodejs")) {
+						// TODO set graph methods return types and array system maps
+						jsGen.generateJS(resource,fsa,context,fileName,element.target,element.environment,typeSystem,idExecution,isLocal,async)
 					}
 				}
 			}
 		}
 	}
 
-	def initializeGraphMethodsReturnTypes() {
-		return #{
-			"clear" -> "Graph",
-			"addNode" -> "Graph",
-			"addNodes" -> "Graph",
-			"nodeDegree" -> "Integer",
-			"nodeInDegree" -> "Integer",
-			"nodeOutDegree" -> "Integer",
-			"neighbourhood" -> "Graph",
-			"nodeEdges" -> "Object[]",
-			"nodeInEdges" -> "Object[]",
-			"nodeOutEdges" -> "Object[]",
-			"nodeSet" -> "Object[]",
-			"numNodes" -> "Integer",
-			"hasNode" -> "Boolean",
-			"addEdge" -> "Graph",
-			"getEdge" -> "Object",
-			"edgeSet" -> "Object[]",
-			"numEdges" -> "Integer",
-			"getEdgeSource" -> "Object",
-			"getEdgeTarget" -> "Object",
-			"getEdgeWeight" -> "Double",
-			"hasEdge" -> "Boolean",
-			"shortestPath" -> "Object[]",
-			"getDiameter" -> "Double",
-			"getRadius" -> "Double",
-			"getCenter" -> "Object[]",
-			"getPeriphery" -> "Object[]",
-			"getNodeEccentricity" -> "Double",
-			"getAverageClusteringCoefficient" -> "Double",
-			"getGlobalClusteringCoefficient" -> "Double",
-			"getNodeClusteringCoefficient" -> "Double",
-			"getLCA" -> "Object",
-			"bfsEdges" -> "Object[]",
-			"bfsNodes" -> "Object[]",
-			"bfsTree" -> "Graph",
-			"dfsEdges" -> "Object[]",
-			"dfsNodes" -> "Object[]",
-			"dfsTree" -> "Graph",
-			"isConnected" -> "Boolean",
-			"isStronglyConnected" -> "Boolean",
-			"connectedComponents" -> "Object[]",
-			"connectedSubgraphs" -> "Graph[]",
-			"numberConnectedComponents" -> "Integer",
-			"nodeConnectedComponent" -> "Object[]",
-			"stronglyConnectedComponents" -> "Object[]",
-			"stronglyConnectedSubgraphs" -> "Graph[]",
-			"isDAG" -> "Boolean",
-			"topologicalSort" -> "Object[]",
-			"getMST" -> "Graph"
-		}
-	}
-
-	def CharSequence compileJava(Resource resource) '''
+	def CharSequence compileJava(Resource resource, boolean local) '''
 		import java.io.BufferedReader;
 		import java.io.BufferedWriter;
 		import java.io.File;
@@ -223,7 +174,7 @@ class FLYGenerator extends AbstractGenerator {
 		import tech.tablesaw.table.Rows;
 		import tech.tablesaw.api.Row;
 		import org.apache.commons.io.FileUtils;
-		«IF checkAWS() || checkAWSDebug()»
+		«IF checkDeclaration(res, "aws") || checkDeclaration(res, "aws-debug")»
 		import com.amazonaws.AmazonClientException;
 		import com.amazonaws.auth.AWSStaticCredentialsProvider;
 		import com.amazonaws.auth.BasicAWSCredentials;
@@ -266,64 +217,63 @@ class FLYGenerator extends AbstractGenerator {
 		import com.amazonaws.services.s3.model.CannedAccessControlList;
 		import com.amazonaws.services.s3.model.PutObjectRequest;
 		import com.amazonaws.services.s3.model.ListObjectsV2Result;
-		import com.amazonaws.services.s3.model.PutObjectRequest;
 		import com.amazonaws.services.s3.model.S3ObjectSummary;
 		«ENDIF»
-		«IF checkAWSDebug()»
+		«IF checkDeclaration(res, "aws-debug")»
 		import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 		«ENDIF»
 		import com.google.gson.Gson;
 		import com.google.gson.reflect.TypeToken;
-		«IF checkAzure()»
+		«IF checkDeclaration(res, "azure")»
 		import com.microsoft.azure.management.resources.fluentcore.arm.Region;
 		import isislab.azureclient.AzureClient;
 		«ENDIF»
-		«IF checkGraph()»
+		«IF checkDeclaration(res, "graph")»
 		import io.github.bissim.fly.Graph;
 		«ENDIF»
 
-		public class «name» {
+		public class «fileName» {
 
-			static HashMap<String,HashMap<String, Object>> __fly_environment = new HashMap<String,HashMap<String,Object>>();
-			static HashMap<String,HashMap<String,Integer>> __fly_async_invocation_id = new HashMap<String,HashMap<String,Integer>>();
+			static HashMap<String, HashMap<String, Object>> __fly_environment = new HashMap<>();
+			static HashMap<String, HashMap<String,Integer>> __fly_async_invocation_id = new HashMap<>();
 			static final String __environment = "smp";
-			static long  __id_execution =  System.currentTimeMillis();
-			«FOR element : (resource.allContents.toIterable.filter(Expression))»
+			static long __id_execution =  System.currentTimeMillis();
+			«FOR element: (resource.allContents.toIterable.filter(Expression))»
 				«IF element instanceof VariableDeclaration»
-					«IF element.right instanceof DeclarationObject
-						&& (
+					«IF element.right instanceof DeclarationObject &&
+						(
 							(element.right as DeclarationObject).features.get(0).value_s.equals("channel") ||
-							list_environment.contains((element.right as DeclarationObject).features.get(0).value_s)
+							listEnvironment.contains((element.right as DeclarationObject).features.get(0).value_s)
 						)»
-						«generateVariableDeclaration(element,"main")»
+						«generateVariableDeclaration(element, "main")»
 					«ENDIF»
 				«ENDIF»
 				«IF element instanceof ConstantDeclaration»
-					«generateConstantDeclaration(element,"main")»
+					«generateConstantDeclaration(element, "main")»
 				«ENDIF»
 			«ENDFOR»
-			«FOR element : resource.allContents.toIterable.filter(FlyFunctionCall).filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
+			«FOR element: resource.allContents.toIterable.filter(FlyFunctionCall).filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
 				static boolean __wait_on_termination_«element.target.name» = true;
 			«ENDFOR»
 
-			public static void main(String[] args) throws Exception{
-				«FOR element : (resource.allContents.toIterable.filter(Expression).filter(ConstantDeclaration))»
+			public static void main(String[] args) throws Exception {
+				«FOR element: (resource.allContents.toIterable.filter(Expression).filter(ConstantDeclaration))»
 					«initialiseConstant(element,"main")»
 				«ENDFOR»
-				«IF checkAWSDebug()»
+				«IF checkDeclaration(res, "aws-debug")»
 				Runtime.getRuntime().exec("chmod +x src-gen/docker-compose-script.sh");
 				ProcessBuilder __processBuilder_docker_compose = new ProcessBuilder("/bin/bash", "-c", "src-gen/docker-compose-script.sh");
 				Map<String, String> __env_docker_compose = __processBuilder_docker_compose.environment();
 				String __path_env_docker_compose = __env_docker_compose.get("PATH");
 				if (!__path_env_docker_compose.contains("/usr/local/bin")) {
-					 __env_docker_compose.put("PATH", __path_env_docker_compose+":/usr/local/bin");
+					 __env_docker_compose.put("PATH", __path_env_docker_compose + ":/usr/local/bin");
 				}
 				Process __p_docker_compose;
 				try {
 					__p_docker_compose = __processBuilder_docker_compose.start();
 					BufferedReader __p_docker_compose_output = new BufferedReader(new InputStreamReader(__p_docker_compose.getInputStream()));
 					String __docker_compose_output_line = __p_docker_compose_output.readLine();
-					while(__docker_compose_output_line !=null) {
+					while (__docker_compose_output_line != null) {
 						System.out.println(__docker_compose_output_line);
 						if (__docker_compose_output_line.contains("Ready."))
 							break;
@@ -333,15 +283,23 @@ class FLYGenerator extends AbstractGenerator {
 					e.printStackTrace();
 				}
 				«ENDIF»
-				«FOR element : resource.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-				filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)]»
+				«FOR element: resource.allContents
+					.toIterable
+					.filter(VariableDeclaration)
+					.filter[right instanceof DeclarationObject]
+					.filter[listEnvironment.contains((right as DeclarationObject).features.get(0).value_s)]»
 					«setEnvironmentDeclarationInfo(element)»
 				«ENDFOR»
-				«FOR element: resource.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-				filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)
-					&& !((right as DeclarationObject).features.get(0).value_s.equals("smp"))]»
+				«FOR element: resource.allContents
+					.toIterable
+					.filter(VariableDeclaration)
+					.filter[right instanceof DeclarationObject]
+					.filter[
+						listEnvironment.contains((right as DeclarationObject).features.get(0).value_s) &&
+						!((right as DeclarationObject).features.get(0).value_s.equals("smp"))
+					]»
 					ExecutorService __thread_pool_«element.name» = Executors.newFixedThreadPool((int) __fly_environment.get("«resource.allContents.toIterable.filter(VariableDeclaration)
-					.filter[right instanceof DeclarationObject].filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)
+					.filter[right instanceof DeclarationObject].filter[listEnvironment.contains((right as DeclarationObject).features.get(0).value_s)
 					&& ((right as DeclarationObject).features.get(0).value_s.equals("smp"))].get(0).name»").get("nthread"));
 				«ENDFOR»
 				«FOR element: resource.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
@@ -350,28 +308,26 @@ class FLYGenerator extends AbstractGenerator {
 						"«((element.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s»",
 						"«((element.right as DeclarationObject).features.get(3) as DeclarationFeature).value_s»",
 						"«((element.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s»",
-						__id_execution+"",
+						__id_execution + "",
 						"«((element.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s»");
 					«element.name».init();
 				«ENDFOR»
 				«IF resource.allContents.toIterable.filter(FlyFunctionCall)
 				.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")].length > 0»
 					ExecutorService __thread_pool_deploy_on_cloud = Executors.newFixedThreadPool((int) __fly_environment.get("«resource.allContents.toIterable.filter(VariableDeclaration)
-					.filter[right instanceof DeclarationObject].filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)
+					.filter[right instanceof DeclarationObject].filter[listEnvironment.contains((right as DeclarationObject).features.get(0).value_s)
 					&& ((right as DeclarationObject).features.get(0).value_s.equals("smp"))].get(0).name»").get("nthread"));
-					ArrayList<Future<Object>> __termination_deploy_on_cloud = new ArrayList();
+					ArrayList<Future<Object>> __termination_deploy_on_cloud = new ArrayList<>();
 					«FOR element: resource.allContents.toIterable.filter(FlyFunctionCall)
 					.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
 						«deployFlyFunctionOnCloud(element)»
 					«ENDFOR»
-					for (Future<Object> f: __termination_deploy_on_cloud){
+					for (Future<Object> f: __termination_deploy_on_cloud) {
 						try {
 							f.get();
 						} catch (InterruptedException e) {
-							// TODO Auto-generated catch block
 							e.printStackTrace();
 						} catch (ExecutionException e) {
-							// TODO Auto-generated catch block
 							e.printStackTrace();
 						}
 					}
@@ -380,9 +336,9 @@ class FLYGenerator extends AbstractGenerator {
 				«FOR element: resource.allContents.toIterable.filter(VariableDeclaration).filter[onCloud].filter[right instanceof DeclarationObject].
 				filter[(right as DeclarationObject).features.get(0).value_s.equals("channel")]»
 					«IF !(element.environment.get(0).right as DeclarationObject).features.get(0).equals("smp")»
-					«generateChanelDeclarationForCloud(element)»
+					«generateChannelDeclarationForCloud(element)»
 					«ELSEIF (element.environment.get(0).right as DeclarationObject).features.get(0).equals("smp") &&
-						(element.environment.get(0).right as DeclarationObject).features.length==3»
+						(element.environment.get(0).right as DeclarationObject).features.length == 3»
 						«generateChannelDeclarationForLanguage(element)»
 					«ENDIF»
 				«ENDFOR»
@@ -391,8 +347,8 @@ class FLYGenerator extends AbstractGenerator {
 				«ENDFOR»
 
 				«FOR element : resource.allContents.toIterable.filter(Expression)»
-					«IF checkBlock(element.eContainer)==false»
-						«generateExpression(element,"main")»
+					«IF checkBlock(element.eContainer) == false»
+						«generateExpression(element, "main", isLocal)»
 					«ENDIF»
 				«ENDFOR»
 				«FOR element: resource.allContents.toIterable.filter(FlyFunctionCall)
@@ -400,44 +356,44 @@ class FLYGenerator extends AbstractGenerator {
 					«undeployFlyFunctionOnCloud(element)»
 				«ENDFOR»
 				«FOR element: resource.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-				filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)
+				filter[listEnvironment.contains((right as DeclarationObject).features.get(0).value_s)
 					&& ((right as DeclarationObject).features.get(0).value_s.equals("smp"))]»
 					__thread_pool_«element.name».shutdown();
 				«ENDFOR»
 				System.exit(0);
 			}
 
-			«FOR element : resource.allContents.toIterable.filter(FunctionDefinition)»
-				«IF checkBlock(element.eContainer)==false»
+			«FOR element: resource.allContents.toIterable.filter(FunctionDefinition)»
+				«IF !checkBlock(element.eContainer)»
 					«generateFunctionDefinition(element)»
 				«ENDIF»
 			«ENDFOR»
 
-			private static String __generateString(Table t,int id) {
+			private static String __generateString(Table t, int id) {
 				StringBuilder b = new StringBuilder();
-				b.append("{\"id\":"+id+",\"data\":");
+				b.append("{\"id\":" + id + ",\"data\":");
 				b.append("[");
 				int i_r = t.rowCount();
-				for(Row r : t) {
+				for (Row r: t) {
 					b.append('{');
-					for (int i=0;i< r.columnCount();i++) {
-						b.append("\""+ r.columnNames().get(i) +"\":"+r.getObject(i)+ ((i<r.columnCount()-1)?",":""));
+					for (int i = 0; i < r.columnCount(); i++) {
+						b.append("\"" + r.columnNames().get(i) + "\":" + r.getObject(i) + ((i < r.columnCount()-1)? ",": ""));
 					}
-					b.append("}"+(((i_r != 1 ))?",":""));
+					b.append("}" + (((i_r != 1 ))? ",": ""));
 					i_r--;
 				}
 				b.append("]}");
 				return b.toString();
 			}
 
-			private static String __generateString(String s,int id) {
+			private static String __generateString(String s, int id) {
 				StringBuilder b = new StringBuilder();
-				b.append("{\"id\":"+id+",\"data\":");
+				b.append("{\"id\":" + id + ",\"data\":");
 				b.append("[");
 				String[] tmp = s.split("\n");
-				for(String t: tmp){
-					b.append("\""+t+"\"");
-					if(t != tmp[tmp.length-1]){
+				for(String t: tmp) {
+					b.append("\"" + t + "\"");
+					if (t != tmp[tmp.length-1]) {
 						b.append(",");
 					}
 				}
@@ -449,13 +405,13 @@ class FLYGenerator extends AbstractGenerator {
 
 	def undeployFlyFunctionOnCloud(FlyFunctionCall call) {
 		var env = (call.environment.right as DeclarationObject).features.get(0).value_s
-		if(deployed_function.get(env).contains(call.target.name)){
-			deployed_function.remove(call.target.name)
+		if (deployedFunction.get(env).contains(call.target.name)) {
+			deployedFunction.remove(call.target.name)
 			var user = (call.environment.right as DeclarationObject).features.get(1).value_s
 			var cred = call.environment.name
 			switch env {
-				case "aws":{
-					return '''
+				case "aws": {
+					'''
 						Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«call.environment.name»_undeploy.sh");
 						ProcessBuilder __processBuilder_undeploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«call.environment.name»_undeploy.sh «user» «call.target.name» "+__id_execution);
 						Map<String, String> __env_undeploy_«call.target.name» = __processBuilder_undeploy_«call.target.name».environment();
@@ -464,14 +420,14 @@ class FLYGenerator extends AbstractGenerator {
 						__processBuilder_undeploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
 						String __path_env_undeploy_«call.target.name» = __env_undeploy_«call.target.name».get("PATH");
 						if (!__path_env_undeploy_«call.target.name».contains("/usr/local/bin")) {
-							 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name»+":/usr/local/bin");
+							 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name» + ":/usr/local/bin");
 						}
 						Process __p_undeploy_«call.target.name»;
 						try {
 							__p_undeploy_«call.target.name»= __processBuilder_undeploy_«call.target.name».start();
 							__p_undeploy_«call.target.name».waitFor();
-							if(__p_undeploy_«call.target.name».exitValue()!=0){
-								System.out.println("Error in «call.target.name»_«call.environment.name»_undeploy.sh ");
+							if (__p_undeploy_«call.target.name».exitValue() != 0) {
+								System.out.println("Error in «call.target.name»_«call.environment.name»_undeploy.sh");
 								System.exit(1);
 							}
 						} catch (Exception e) {
@@ -479,8 +435,8 @@ class FLYGenerator extends AbstractGenerator {
 						}
 					'''
 				}
-				case "aws-debug":{
-					return '''
+				case "aws-debug": {
+					'''
 						Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«call.environment.name»_undeploy.sh");
 						ProcessBuilder __processBuilder_undeploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«call.environment.name»_undeploy.sh «user» «call.target.name» "+__id_execution);
 						Map<String, String> __env_undeploy_«call.target.name» = __processBuilder_undeploy_«call.target.name».environment();
@@ -489,13 +445,13 @@ class FLYGenerator extends AbstractGenerator {
 						__processBuilder_undeploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
 						String __path_env_undeploy_«call.target.name» = __env_undeploy_«call.target.name».get("PATH");
 						if (!__path_env_undeploy_«call.target.name».contains("/usr/local/bin")) {
-							 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name»+":/usr/local/bin");
+							 __env_undeploy_«call.target.name».put("PATH", __path_env_undeploy_«call.target.name» + ":/usr/local/bin");
 						}
 						Process __p_undeploy_«call.target.name»;
 						try {
 							__p_undeploy_«call.target.name»= __processBuilder_undeploy_«call.target.name».start();
 							__p_undeploy_«call.target.name».waitFor();
-							if(__p_undeploy_«call.target.name».exitValue()!=0){
+							if (__p_undeploy_«call.target.name».exitValue() != 0) {
 								System.out.println("Error in «call.target.name»_«call.environment.name»_undeploy.sh ");
 								System.exit(1);
 							}
@@ -504,13 +460,13 @@ class FLYGenerator extends AbstractGenerator {
 						}
 					'''
 				}
-				case "azure":{
-					return '''
+				case "azure": {
+					'''
 						«cred».clear("./flyapp«cred»"+__id_execution,"./.env");
 					'''
 				}
 			}
-		}else
+		} else
 			return ''''''
 	}
 
@@ -518,16 +474,16 @@ class FLYGenerator extends AbstractGenerator {
 		var environment = (call.environment.right as DeclarationObject).features.get(0).value_s
 		var env_name = call.environment.name
 //		println("Function to deploy: " + deployed_function)
-		if (!deployed_function.get(environment).contains(call.target.name)){
-			deployed_function.get(environment).add(call.target.name)
+		if (!deployedFunction.get(environment).contains(call.target.name)){
+			deployedFunction.get(environment).add(call.target.name)
 
-			if(environment.contains("aws")){
+			if (environment.contains("aws")) {
 				var user = (call.environment.right as DeclarationObject).features.get(1).value_s
-				var cred = call.environment.name
-				return '''
-					__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit( new Callable<Object> (){
+//				var cred = call.environment.name
+				'''
+					__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit(new Callable<Object> () {
 						@Override
-						public Object call() throws Exception{
+						public Object call() throws Exception {
 							Runtime.getRuntime().exec("chmod +x src-gen/«call.target.name»_«env_name»_deploy.sh");
 							ProcessBuilder __processBuilder_deploy_«call.target.name» = new ProcessBuilder("/bin/bash", "-c", "src-gen/«call.target.name»_«env_name»_deploy.sh «user» «call.target.name» "+__id_execution);
 							__processBuilder_deploy_«call.target.name».redirectOutput(ProcessBuilder.Redirect.INHERIT);
@@ -535,29 +491,30 @@ class FLYGenerator extends AbstractGenerator {
 							__processBuilder_deploy_«call.target.name».redirectError(ProcessBuilder.Redirect.INHERIT);
 							String __path_env_deploy_«call.target.name» = __env_deploy_«call.target.name».get("PATH");
 							if (!__path_env_deploy_«call.target.name».contains("/usr/local/bin")) {
-								__env_deploy_«call.target.name».put("PATH", __path_env_deploy_«call.target.name»+":/usr/local/bin");
+								__env_deploy_«call.target.name».put("PATH", __path_env_deploy_«call.target.name» + ":/usr/local/bin");
 							}
 							Process __p_deploy_«call.target.name»;
 							try {
 								__p_deploy_«call.target.name» = __processBuilder_deploy_«call.target.name».start();
 								__p_deploy_«call.target.name».waitFor();
-								if(__p_deploy_«call.target.name».exitValue()!=0){
-									System.out.println("Error in «call.target.name»_«env_name»_deploy.sh ");
+								if (__p_deploy_«call.target.name».exitValue() != 0) {
+									System.out.println("Error in «call.target.name»_«env_name»_deploy.sh");
 									System.exit(1);
 								}
 							} catch (Exception e) {
 								e.printStackTrace();
 							}
+
 							return null;
 						}
 					}));
 
 				'''
-			}else if((call.environment.right as DeclarationObject).features.get(0).value_s.equals("azure")) {
-				return '''
-					__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit( new Callable<Object> (){
+			} else if ((call.environment.right as DeclarationObject).features.get(0).value_s.equals("azure")) {
+				'''
+					__termination_deploy_on_cloud.add(__thread_pool_deploy_on_cloud.submit(new Callable<Object> () {
 						@Override
-						public Object call() throws Exception{
+						public Object call() throws Exception {
 							«call.environment.name».publishFunction("«call.target.name»","src-gen/«call.target.name»_«env_name»_deploy.sh");
 							return null;
 						}
@@ -566,120 +523,119 @@ class FLYGenerator extends AbstractGenerator {
 			}
 		}
 		else
-			return''''''
+			return ''''''
 	}
 
-	def generateExpression(Expression element, String scope) {
-		'''
-			«IF element  instanceof VariableDeclaration»
-				«IF element.right instanceof DeclarationObject»
-					«IF ! list_environment.contains((element.right as DeclarationObject).features.get(0).value_s) &&
-					!(element.right as DeclarationObject).features.get(0).value_s.equals("channel")	»
-						«generateVariableDeclaration(element,scope)»
-					«ENDIF»
-				«ELSE»
-					«generateVariableDeclaration(element,scope)»
+	override generateExpression(Expression element, String scope, boolean local) '''
+«««		«println('''Generating expression «element» in «scope»''')»
+		«IF element instanceof VariableDeclaration»
+			«IF element.right instanceof DeclarationObject»
+				«IF !listEnvironment.contains((element.right as DeclarationObject).features.get(0).value_s) &&
+				!(element.right as DeclarationObject).features.get(0).value_s.equals("channel")»
+					«generateVariableDeclaration(element, scope)»
 				«ENDIF»
+			«ELSE»
+				«generateVariableDeclaration(element, scope)»
 			«ENDIF»
+		«ENDIF»
+		«IF element instanceof Assignment»
+			«generateAssignment(element, scope)»
+		«ENDIF»
+		«IF element instanceof PrintExpression»
+			«generatePrintExpression(element, scope)»
+		«ENDIF»
+		«IF element instanceof IfExpression»
+			«generateIfExpression(element, scope)»
+		«ENDIF»
+		«IF element instanceof ForExpression»
+			«generateForExpression(element, scope)»
+		«ENDIF»
+		«IF element instanceof WhileExpression»
+			«generateWhileExpression(element, scope)»
+		«ENDIF»
+		«IF element instanceof ChannelSend»
+			«generateChannelSend(element, scope)»;
+		«ENDIF»
+		«IF element instanceof ChannelReceive»
+			«generateChannelReceive(element, scope)»;
+		«ENDIF»
+		«IF element instanceof FlyFunctionCall»
+			«generateFlyFunctionCall(element, scope)»
+		«ENDIF»
+		«IF element instanceof LocalFunctionCall»
+			«generateLocalFunctionCall(element, scope)»
+		«ENDIF»
+		«IF element instanceof FunctionReturn»
+			«generateFunctionReturn(element, scope)»
+		«ENDIF»
+		«IF element instanceof BlockExpression»
+			«generateBlockExpression(element, scope, isLocal)»
+		«ENDIF»
+		«IF element instanceof VariableFunction»
+			«generateVariableFunction(element, true, scope)»
+		«ENDIF»
+		«IF element instanceof SortExpression»
+			«generateSortExpression(element, scope)»
+		«ENDIF»
+		«IF element instanceof PostfixOperation»
+			«generatePostfixOperation(element, scope)»
+		«ENDIF»
+	'''
 
-			«IF element instanceof Assignment»
-				«generateAssignment(element,scope)»
-			«ENDIF»
-			«IF element instanceof PrintExpression»
-				«generatePrintExpression(element,scope)»
-			«ENDIF»
-			«IF element instanceof IfExpression»
-				«generateIfExpression(element,scope)»
-			«ENDIF»
-			«IF element instanceof ForExpression»
-				«generateForExpression(element,scope)»
-			«ENDIF»
-			«IF element instanceof WhileExpression»
-				«generateWhileExpression(element,scope)»
-			«ENDIF»
-			«IF element instanceof ChannelSend»
-				«generateChannelSend(element,scope)»;
-			«ENDIF»
-			«IF element instanceof ChannelReceive»
-				«generateChannelReceive(element,scope)»;
-			«ENDIF»
-			«IF element instanceof FlyFunctionCall»
-				«generateFlyFunctionCall(element,scope)»
-			«ENDIF»
-			«IF element instanceof LocalFunctionCall»
-				«generateLocalFunctionCall(element,scope)»
-			«ENDIF»
-			«IF element instanceof FunctionReturn»
-				«generateFunctionReturn(element,scope)»
-			«ENDIF»
-			«IF element instanceof BlockExpression»
-				«generateBlockExpression(element,scope)»
-			«ENDIF»
-			«IF element instanceof VariableFunction»
-				«generateVariableFunction(element,true,scope)»
-			«ENDIF»
-			«IF element instanceof SortExpression»
-				«generateSortExpression(element,scope)»
-			«ENDIF»
-			«IF element instanceof PostfixOperation»
-				«generatePostfixOperation(element,scope)»
-			«ENDIF»
-		'''
-	}
+	def generatePostfixOperation(PostfixOperation exp, String scope) '''
+		«generateArithmeticExpression(exp.variable, scope)»«exp.feature»;
+	'''
 
-	def generatePostfixOperation(PostfixOperation exp, String scope) {
-		return '''
-			«generateArithmeticExpression(exp.variable,scope)»«exp.feature»;
-		'''
-	}
-
-	def generateSortExpression(SortExpression exp, String scope) {
-		return '''
-			ArrayList<Entry<Object,Object>> __sup = new ArrayList<Entry<Object,Object>>(«exp.target.name».entrySet());
-			Collections.sort(
-				__sup,
-				new Comparator<Entry<Object,Object>>() {
-					public int compare(Entry<Object,Object> o1, Entry<Object,Object> o2) {
-						// TODO Auto-generated method stub
-						if(o1.getValue() instanceof Integer && o2.getValue() instanceof Integer)
-							return Integer.compare((Integer) o1.getValue(),(Integer) o2.getValue());
-						else if(o1.getValue() instanceof Double && o2.getValue() instanceof Double)
-							return Double.compare((Double) o1.getValue(), (Double) o2.getValue());
-						else return 0;
-					}
+	def generateSortExpression(SortExpression exp, String scope) '''
+		ArrayList<Entry<Object, Object>> __sup = new ArrayList<>(«exp.target.name».entrySet());
+		Collections.sort(
+			__sup,
+			new Comparator<Entry<Object, Object>>() {
+				public int compare(Entry<Object,Object> o1, Entry<Object,Object> o2) {
+					if (o1.getValue() instanceof Integer && o2.getValue() instanceof Integer)
+						return Integer.compare((Integer) o1.getValue(),(Integer) o2.getValue());
+					else if (o1.getValue() instanceof Double && o2.getValue() instanceof Double)
+						return Double.compare((Double) o1.getValue(), (Double) o2.getValue());
+					else return 0;
 				}
-			);
-
-			«exp.target.name».clear();
-
-			«IF exp.type.equals("desc")»
-				Collections.reverse(__sup);
-			«ENDIF»
-
-			for (int __i=0; __i<__sup.size();__i++) {
-				«exp.target.name».put(""+__i, __sup.get(__i).getValue());
 			}
-		'''
-	}
+		);
+
+		«exp.target.name».clear();
+
+		«IF exp.type.equals("desc")»
+			Collections.reverse(__sup);
+		«ENDIF»
+
+		for (int __i = 0; __i < __sup.size(); __i++) {
+			«exp.target.name».put("" + __i, __sup.get(__i).getValue());
+		}
+	'''
 
 	// methods for Variable Declaration
 	def generateVariableDeclaration(VariableDeclaration dec, String scope) {
 		if (dec.typeobject.equals('var')) { // var declaration
-//			println(dec)
-//			println(dec.right)
-			if (dec.right instanceof DeclarationObject){
-				var type = (dec.right as DeclarationObject).features.get(0).value_s
-				switch (type) {
+//			print('''Declaration of «dec.name» FLY-typed «dec.typeobject» ''')
+//			print('''with value «dec.right» in «scope», ''')
+//			println('''on cloud? «dec.onCloud»''')
+			if (dec.right instanceof DeclarationObject) {
+				val decFeats = (dec.right as DeclarationObject).features
+				val decType = decFeats.get(0).value_s
+				switch (decType) {
 					case "smp": {
-						return '''
-							static ExecutorService __thread_pool_«dec.name» = Executors.newFixedThreadPool(«((dec.right as DeclarationObject).features.get(1)).value_t»);
+						val numThreads = (decFeats.get(1)).value_t
+
+						'''
+							static ExecutorService __thread_pool_«dec.name» = Executors.newFixedThreadPool(«numThreads»);
 						'''
 					}
-					case "aws-debug":{
-						var access_id_key = ((dec.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s
-						var secret_access_key = ((dec.right as DeclarationObject).features.get(3) as DeclarationFeature).value_s
-						var region = ((dec.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
-						return '''
+
+					case "aws-debug": {
+						val access_id_key = decFeats.get(2).value_s
+						val secret_access_key = decFeats.get(3).value_s
+//						val region = decFeats.get(4).value_s
+
+						'''
 
 							static BasicAWSCredentials «dec.name» = new BasicAWSCredentials("«access_id_key»", "«secret_access_key»");
 
@@ -705,12 +661,13 @@ class FLYGenerator extends AbstractGenerator {
 								.build();
 						'''
 					}
-					case "aws": {
-						var access_id_key = ((dec.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s
-						var secret_access_key = ((dec.right as DeclarationObject).features.get(3) as DeclarationFeature).value_s
-						var region = ((dec.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
-						return '''
 
+					case "aws": {
+						var access_id_key = decFeats.get(2).value_s
+						var secret_access_key = decFeats.get(3).value_s
+						var region = decFeats.get(4).value_s
+
+						'''
 							static BasicAWSCredentials «dec.name» = new BasicAWSCredentials("«access_id_key»", "«secret_access_key»");
 
 							static AmazonSQS __sqs_«dec.name»  = AmazonSQSClient.builder()
@@ -734,38 +691,44 @@ class FLYGenerator extends AbstractGenerator {
 								.build();
 						'''
 					}
-					case "azure":{
-						var client_id = ((dec.right as DeclarationObject).features.get(1) as DeclarationFeature).value_s
-						var tenant_id = ((dec.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s
-						var secret_key = ((dec.right as DeclarationObject).features.get(3) as DeclarationFeature).value_s
-						var subscription_id = ((dec.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
-						var language = ((dec.right as DeclarationObject).features.get(6) as DeclarationFeature).value_s
-						var region = ((dec.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s
-						return '''
-						static AzureClient «dec.name» = null;
+
+					case "azure": {
+//						val client_id = decFeats.get(1).value_s
+//						val tenant_id = decFeats.get(2).value_s
+//						val secret_key = decFeats.get(3).value_s
+//						val subscription_id = decFeats.get(4).value_s
+//						val language = decFeats.get(6).value_s
+//						val region = decFeats.get(5).value_s
+
+						'''
+							static AzureClient «dec.name» = null;
 						'''
 					}
-					case "random":{
-						return '''
+
+					case "random": {
+						'''
 							Random «dec.name» = new Random();
-							'''
+						'''
 					}
-					case "channel":{
-						var env = (dec.environment.get(0).right as DeclarationObject).features.get(0).value_s
-						return '''
-							static LinkedTransferQueue<Object> «dec.name» = new LinkedTransferQueue<Object>();
-							«IF ! env.equals("smp")»
+
+					case "channel": {
+						val decEnvFeats = (dec.environment.get(0).right as DeclarationObject).features
+						val env = decEnvFeats.get(0).value_s
+
+						'''
+							static LinkedTransferQueue<Object> «dec.name» = new LinkedTransferQueue<>();
+							«IF !env.equals("smp")»
 								static Boolean __wait_on_«dec.name» = true;
 							«ENDIF»
-							«IF (dec.environment.get(0).right as DeclarationObject).features.length == 3 »
+							«IF decEnvFeats.length == 3»
 								static ServerSocket __socket_server_«dec.name»;
 							«ENDIF»
 						'''
 					}
-					case "file":{ //TO-D0: add support to directory
+
+					case "file": { // TODO add support to directory
 						typeSystem.get(scope).put(dec.name, "File")
 
-						val decFeats = (dec.right as DeclarationObject).features
 						val path = if (decFeats.get(1).value_f !== null)
 								decFeats.get(1).value_f.name.trim
 							else
@@ -780,9 +743,10 @@ class FLYGenerator extends AbstractGenerator {
 
 						val pathIsURL = pyGen.isURL(path)
 						val tempFile = path.split("/").last
-						return '''
+
+						'''
 							«IF dec.onCloud»
-								«deployFileOnCloud(dec, id_execution)»
+								«deployFileOnCloud(dec, idExecution)»
 							«ELSE»
 								«IF pathIsURL»
 									File «dec.name» = new File("«tempFile»");
@@ -796,37 +760,51 @@ class FLYGenerator extends AbstractGenerator {
 							«ENDIF»
 						'''
 					}
-					case "dataframe":{
+
+					case "dataframe": {
 						var path = (dec.right as DeclarationObject).features.get(1).value_s
 						typeSystem.get(scope).put(dec.name, "Table")
-						return '''
+
+						'''
 							Table «dec.name» = Table.read().csv(CsvReadOptions
-								.builder(«IF dec.onCloud && ! (path.contains("https://")) » "https://s3.us-east-2.amazonaws.com/bucket-"+__id_execution+"/«path»" «ELSE»"«path»"«ENDIF»)
+								.builder(«IF dec.onCloud && !isURL(path)» "https://s3.us-east-2.amazonaws.com/bucket-" + __id_execution + "/«path»" «ELSE»"«path»"«ENDIF»)
 								.maxNumberOfColumns(5000)
 								.tableName("«dec.name»")
 								.separator('«(dec.right as DeclarationObject).features.get(2).value_s»')
 							);
 							«IF dec.onCloud»
-								«deployFileOnCloud(dec,id_execution)»
+								«deployFileOnCloud(dec,idExecution)»
 							«ENDIF»
 						'''
 					}
+
 					case "graph": {
 						typeSystem.get(scope).put(dec.name, "Graph")
 
-						val decFeats = (dec.right as DeclarationObject).features
 						val sourceType = decFeats.get(1).feature
 						val source = if (sourceType == "path")
 								decFeats.get(1).value_s.trim
-							else
+							else if (sourceType == "file")
 								decFeats.get(1).value_f.name.trim
 						val separator = decFeats.get(2).value_s
 						val nodeClass = decFeats.get(3).value_s
-						val isDirected = if (decFeats.size > 4 && decFeats.get(4).value_s == "true")
+						val isDirected = if (
+							decFeats.size > 4 &&
+							(
+								decFeats.get(4).feature == "directed" ||
+								decFeats.size > 5 && decFeats.get(5).feature == "directed"
+							)
+						)
 								"true"
 							else
 								"false"
-						val isWeighted = if (decFeats.size > 5 && decFeats.get(5).value_s == "true")
+						val isWeighted = if (
+							decFeats.size > 4 &&
+							(
+								decFeats.get(4).feature == "weighted" ||
+								decFeats.size > 5 && decFeats.get(5).feature == "weighted"
+							)
+						)
 								"true"
 							else
 								"false"
@@ -836,256 +814,309 @@ class FLYGenerator extends AbstractGenerator {
 						// 3rd param: Java node class
 						// 4th param: imported graph is directed
 						// 5th param: imported graph is weighted
-						return '''
-							«IF sourceType == "path"»
-								«IF pyGen.isURL(source)»
-									«val fileName = source.split("/").last»
-									File «dec.name»File = new File("«fileName»");
-									FileUtils.copyURLToFile(
-										new URL("«source»"),
-										«dec.name»File
-									);
-								«ELSE»
-									File «dec.name»File = new File("«source»");
+						'''
+							«IF sourceType != "create"»
+								«IF sourceType == "path"»
+									«IF pyGen.isURL(source)»
+										«val fileName = source.split("/").last»
+										File «dec.name»File = new File("«fileName»");
+										FileUtils.copyURLToFile(
+											new URL("«source»"),
+											«dec.name»File
+										);
+									«ELSE»
+										File «dec.name»File = new File("«source»");
+									«ENDIF»
 								«ENDIF»
+								Graph<«nodeClass», Object> «dec.name» = Graph.importGraph(
+									«IF sourceType == "file"»
+										«source»,
+									«ELSEIF sourceType == "path"»
+										«dec.name»File,
+									«ENDIF»
+									"«separator»",
+									«nodeClass».class,
+									«isWeighted»,
+									«isDirected»
+								);
+							«ELSE»
+								Graph<«nodeClass», Object> «dec.name» = new Graph<>(
+									«nodeClass».class,
+									«isDirected»,
+									«isWeighted»
+								);
 							«ENDIF»
-							Graph<«nodeClass», Object> «dec.name» = Graph.importGraph(
-								«IF sourceType == "file"»
-									«source»,
-								«ELSEIF sourceType == "path"»
-									«dec.name»File,
-								«ENDIF»
-								"«separator»",
-								«nodeClass».class,
-								«isWeighted»,
-								«isDirected»
-							);
 						'''
 					}
+
 					default: {
-						return ''''''
+						''''''
 					}
 				}
 			} else if (dec.right instanceof NameObjectDef) {
 				typeSystem.get(scope).put(dec.name, "HashMap")
-				var s = '''HashMap<Object,Object> «dec.name» = new HashMap<Object,Object>();
-				'''
+				var s = '''HashMap<Object, Object> «dec.name» = new HashMap<>();'''
 				var i = 0;
-				for (f : (dec.right as NameObjectDef).features) {
-					if (f.feature != null) {
+				for (f: (dec.right as NameObjectDef).features) {
+					if (f.feature !== null) {
 						typeSystem.get(scope).put(
 							dec.name + "." + f.feature,
 							valuateArithmeticExpression(f.value, scope)
 						)
-						s = s + '''«dec.name».put("«f.feature»",«generateArithmeticExpression(f.value,scope)»);
-						'''
+						s += '''«dec.name».put("«f.feature»",«generateArithmeticExpression(f.value, scope)»);'''
 					} else {
 						typeSystem.get(scope).put(
 							dec.name + "[" + i + "]",
 							valuateArithmeticExpression(f.value, scope)
 						)
-						s = s + '''«dec.name».put(«i»,«generateArithmeticExpression(f.value,scope)»);
+						s += '''«dec.name».put(«i»,«generateArithmeticExpression(f.value, scope)»);
 						'''
 						i++
 					}
+				}
 
+				s
+			} else if (dec.right instanceof ArrayDefinition) {
+				val arrayDef = dec.right as ArrayDefinition
+				var declType = arrayDef.type
+				var realType = if (declType.equals("Integer")) {
+					"int"
+				} else if (declType.equals("Double")) {
+					"double"
+				} else if (declType.equals("String")) {
+					"String"
 				}
-				return s
-			} else if(dec.right instanceof ArrayDefinition){
-				var type_decl = (dec.right as ArrayDefinition).type
-				var real_type = ""
-				if(type_decl.equals("Integer")){
-					real_type = "int"
-				}else if(type_decl.equals("Double")){
-					real_type = "double"
-				}else if(type_decl.equals("String")){
-					real_type = "String"
-				}
-				if((dec.right as ArrayDefinition).indexes.length==1){ //mono-dimensional
-					typeSystem.get(scope).put(dec.name, "Array_"+type_decl)
-					var array_len = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-					var s = '''«real_type»[] «dec.name» = new «real_type»[«array_len»];'''
-					return s
-				} else if((dec.right as ArrayDefinition).indexes.length==2){ //bi-dimensional
-					var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-					var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
-					typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col)
-					var s = '''«real_type»[][] «dec.name» = new «real_type»[«row»][«col»];'''
-					return s
-				} else if ((dec.right as ArrayDefinition).indexes.length==3) { //three-dimensional
-					var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-					var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
-					var dep = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(2).value,scope)
-					typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col+"_"+dep)
-					var s = '''«real_type»[][][] «dec.name» = new «real_type»[«row»][«col»][«dep»];'''
-					return s
-				}
-			}else if(dec.right instanceof ArrayInit){
-				if(((dec.right as ArrayInit).values.get(0) instanceof NumberLiteral) ||
-					((dec.right as ArrayInit).values.get(0) instanceof StringLiteral) ||
-					((dec.right as ArrayInit).values.get(0) instanceof FloatLiteral)
-				){ //array init
-					var real_type = valuateArithmeticExpression((dec.right as ArrayInit).values.get(0) as ArithmeticExpression,scope)
+				if (arrayDef.indexes.length == 1) { // mono-dimensional
+					typeSystem.get(scope).put(dec.name, '''«declType»[]''')
+					val arrayLen = generateArithmeticExpression(arrayDef.indexes.get(0).value, scope)
+					arraySystem.get(scope).put(dec.name, #[arrayLen])
 
-					typeSystem.get(scope).put(dec.name,"Array_"+real_type)
-					return '''
-						«real_type» [] «dec.name» = {«FOR e: (dec.right as ArrayInit).values»«generateArithmeticExpression(e as ArithmeticExpression,scope)»«IF e != (dec.right as ArrayInit).values.last »,«ENDIF»«ENDFOR»};
+					'''«realType»[] «dec.name» = new «realType»[«arrayLen»];'''
+				} else if(arrayDef.indexes.length == 2) { // bi-dimensional
+					val row = generateArithmeticExpression(arrayDef.indexes.get(0).value, scope)
+					val col = generateArithmeticExpression(arrayDef.indexes.get(1).value, scope)
+					typeSystem.get(scope).put(dec.name, '''«declType»[][]''')
+					arraySystem.get(scope).put(dec.name, #[row, col])
+
+					'''«realType»[][] «dec.name» = new «realType»[«row»][«col»];'''
+				} else if (arrayDef.indexes.length == 3) { // three-dimensional
+					val row = generateArithmeticExpression(arrayDef.indexes.get(0).value, scope)
+					val col = generateArithmeticExpression(arrayDef.indexes.get(1).value, scope)
+					val dep = generateArithmeticExpression(arrayDef.indexes.get(2).value, scope)
+					typeSystem.get(scope).put(dec.name, '''«declType»[][][]''')
+					arraySystem.get(scope).put(dec.name, #[row, col, dep])
+
+					'''«realType»[][][] «dec.name» = new «realType»[«row»][«col»][«dep»];'''
+				}
+			} else if (dec.right instanceof ArrayInit) {
+				val arrayInit = dec.right as ArrayInit
+				val firstValue = arrayInit.values.get(0)
+				if (
+					firstValue instanceof NumberLiteral ||
+					firstValue instanceof StringLiteral ||
+					firstValue instanceof FloatLiteral
+				) { // array init
+					val realType = valuateArithmeticExpression(firstValue as ArithmeticExpression, scope)
+					val arrayLen = firstValue.values.length
+					typeSystem.get(scope).put(dec.name, '''«realType»[]''')
+					arraySystem.get(scope).put(dec.name, #['''«arrayLen»'''])
+
 					'''
-				} else if ((dec.right as ArrayInit).values.get(0) instanceof ArrayValue){ //matrix 2d
-					if(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof NumberLiteral ||
-						((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof StringLiteral ||
-						((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof FloatLiteral){
-						var real_type = valuateArithmeticExpression(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArithmeticExpression,scope)
-						var col = (((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.length
-						typeSystem.get(scope).put(dec.name,"Matrix_"+real_type+"_"+col)
-						var ret = '''«real_type» [][] «dec.name» = {'''
-						for (e : (dec.right as ArrayInit).values){
-							ret+='''{'''
-							for(e1: (e as ArrayValue).values){
-								ret+=generateArithmeticExpression(e1 as ArithmeticExpression,scope)
-								if(e1!= (e as ArrayValue).values.last){
+						«realType» [] «dec.name» = {«FOR e: arrayInit.values»«generateArithmeticExpression(e as ArithmeticExpression, scope)»«IF e != arrayInit.values.last»,«ENDIF»«ENDFOR»};
+					'''
+				} else if (firstValue instanceof ArrayValue) { // matrix 2d
+					val firstCell = firstValue.values.get(0)
+					if (
+						firstCell instanceof NumberLiteral ||
+						firstCell instanceof StringLiteral ||
+						firstCell instanceof FloatLiteral
+					){
+						val realType = valuateArithmeticExpression(firstCell as ArithmeticExpression, scope)
+						val row = firstValue.values.length
+						val col = firstCell.values.length
+						typeSystem.get(scope).put(dec.name, '''«realType»[][]''')
+						arraySystem.get(scope).put(dec.name, #['''«row»''', '''«col»'''])
+
+						var ret = '''«realType» [][] «dec.name» = {'''
+						for (e: arrayInit.values) {
+							ret += '''{'''
+							for (e1: (e as ArrayValue).values) {
+								ret += generateArithmeticExpression(e1 as ArithmeticExpression, scope)
+								if (e1 != (e as ArrayValue).values.last) {
 									ret+=''','''
 								}
 							}
-							ret+='''}'''
-							if (e !=  (dec.right as ArrayInit).values.last){
-								ret+=''','''
+							ret += '''}'''
+							if (e != arrayInit.values.last) {
+								ret += ''','''
 							}
 						}
-						ret+='''};'''
-						return ret
-					}else if (((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof ArrayValue){ //matrix 3d
-						if ((((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) instanceof NumberLiteral ||
-							(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) instanceof StringLiteral ||
-							(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) instanceof FloatLiteral ){
-							var real_type = valuateArithmeticExpression((((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) as ArithmeticExpression,scope)
-							var col = (((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.length
-							var dep = ((((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.length
-							typeSystem.get(scope).put(dec.name,"Matrix_"+real_type+"_"+col+"_"+dep)
-							var ret = '''«real_type» [][][] «dec.name» = {'''
-							for (e : (dec.right as ArrayInit).values){
-								ret+='''{'''
-								for(e1: (e as ArrayValue).values){
-									ret+='''{'''
-									for(e2: ((e1 as ArrayValue).values)){
-										ret+=generateArithmeticExpression(e2 as ArithmeticExpression,scope)
-										if(e2!= (e1 as ArrayValue).values.last){
-											ret+=''','''
+						ret += '''};'''
+
+						ret
+					} else if (firstCell instanceof ArrayValue) { // matrix 3d
+						val first3DCell = firstCell.values.get(0)
+						if (
+							first3DCell instanceof NumberLiteral ||
+							first3DCell instanceof StringLiteral ||
+							first3DCell instanceof FloatLiteral
+						) {
+							val realType = valuateArithmeticExpression(first3DCell as ArithmeticExpression,scope)
+							val row = firstValue.values.length
+							val col = firstCell.values.length
+							val dep = first3DCell.values.length
+							typeSystem.get(scope).put(dec.name, '''«realType»[][][]''')
+							arraySystem.get(scope).put(dec.name, #['''«row»''', '''«col»''', '''«dep»'''])
+							var ret = '''«realType» [][][] «dec.name» = {'''
+							for (e: arrayInit.values) {
+								ret += '''{'''
+								for (e1: (e as ArrayValue).values) {
+									ret += '''{'''
+									for (e2: ((e1 as ArrayValue).values)) {
+										ret += generateArithmeticExpression(e2 as ArithmeticExpression, scope)
+										if (e2 != (e1 as ArrayValue).values.last) {
+											ret += ''','''
 										}
 									}
-									ret+='''}'''
-									if(e1!= (e as ArrayValue).values.last){
-										ret+=''','''
+									ret += '''}'''
+									if (e1 != (e as ArrayValue).values.last) {
+										ret += ''','''
 									}
 								}
-								ret+='''}'''
-								if (e !=  (dec.right as ArrayInit).values.last){
-									ret+=''','''
+								ret += '''}'''
+								if (e != arrayInit.values.last) {
+									ret += ''','''
 								}
 							}
-							ret+='''};'''
-							return ret
+							ret += '''};'''
+
+							ret
 						}
 					}
 				}
 			} else if (dec.right instanceof FlyFunctionCall) {
-				var s = '''
-					«generateFlyFunctionCall(dec.right as FlyFunctionCall,scope)»
-					__fly_async_invocation_id.put("«dec.name»", new HashMap<String,Integer>());
-					__fly_async_invocation_id.get("«dec.name»").put("id",«func_ID-1»);
-					__fly_async_invocation_id.get("«dec.name»").put("num_invocation",__num_proc_«(dec.right as FlyFunctionCall).target.name»_«func_ID-1»);
-					final LinkedTransferQueue<Object> «dec.name» = new LinkedTransferQueue<Object>();
+				typeSystem.get(scope).put(dec.name, "FutureList")
 
 				'''
-				typeSystem.get(scope).put(dec.name, "FutureList")
-				return s
+					«generateFlyFunctionCall(dec.right as FlyFunctionCall, scope)»
+					__fly_async_invocation_id.put("«dec.name»", new HashMap<>());
+					__fly_async_invocation_id.get("«dec.name»").put("id",«funcID-1»);
+					__fly_async_invocation_id.get("«dec.name»").put("num_invocation", __num_proc_«(dec.right as FlyFunctionCall).target.name»_«funcID-1»);
+					final LinkedTransferQueue<Object> «dec.name» = new LinkedTransferQueue<>();
+
+				'''
 			} else if (dec.right instanceof ChannelReceive) {
-				var s = '''
+				'''
 					Object «dec.name» = null;
-					try{
-						e = «generateChannelReceive(dec.right as ChannelReceive,scope)»
-					}catch(InterruptedException e1){
+					try {
+						e = «generateChannelReceive(dec.right as ChannelReceive, scope)»
+					} catch (InterruptedException e1) {
 						e1.printStackTrace();
 					}
 				'''
-				return s
 			} else if (dec.right instanceof VariableFunction) {
 //				if ((dec.right as VariableFunction).feature.equals("split")) {
-//					typeSystem.get(scope).put(dec.name, "Strin")
+//					typeSystem.get(scope).put(dec.name, "String")
+//
 //					return '''
-//						HashMap<Object,Object> «dec.name» = new HashMap<Object,Object>();
-//						int _«dec.name»_crt=0;
-//						for(String _«dec.name» : «(dec.right as VariableFunction).target.name».«(dec.right as VariableFunction).feature»(«generateArithmeticExpression((dec.right as VariableFunction).expressions.get(0),scope)»)){
-//							«dec.name».put(_«dec.name»_crt++,_«dec.name»);
+//						HashMap<Object,Object> «dec.name» = new HashMap<>();
+//						int _«dec.name»_crt = 0;
+//						for (String _«dec.name»: «(dec.right as VariableFunction).target.name».«(dec.right as VariableFunction).feature»(«generateArithmeticExpression((dec.right as VariableFunction).expressions.get(0), scope)»)) {
+//							«dec.name».put(_«dec.name»_crt++, _«dec.name»);
 //						}
 //					'''
 //				} else {
+					val varFunctType = valuateArithmeticExpression(dec.right as VariableFunction, scope)
 					typeSystem.get(scope).put(
 						dec.name,
-						valuateArithmeticExpression(dec.right as VariableFunction, scope)
+						varFunctType
 					)
-					return '''
-						«valuateArithmeticExpression(dec.right as VariableFunction,scope)» «dec.name» = «generateArithmeticExpression(dec.right as VariableFunction,scope)»;
+
+					'''
+						«varFunctType» «dec.name» = «generateArithmeticExpression(dec.right as VariableFunction, scope)»;
 					'''
 //				}
 
-			} else if (dec.right instanceof CastExpression && ((dec.right as CastExpression).target instanceof ChannelReceive)){
-					if((((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.contains("aws")	||
-						(((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.contains("aws-debug") ||
-						(((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.contains("azure") ||
-						((((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") &&
-							(((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.length==3
-						)){
-						if((dec.right as CastExpression).type.equals("Object")){
-							typeSystem.get(scope).put(dec.name, "HashMap")
-							return '''
-								String __res_«((dec.right as CastExpression).target as ChannelReceive).target.name» = (String) «((dec.right as CastExpression).target as ChannelReceive).target.name».take();
-								HashMap «dec.name» = new Gson().fromJson(__res_«((dec.right as CastExpression).target as ChannelReceive).target.name»,new TypeToken<HashMap<String, String>>() {}.getType());
-							'''
-						} else if ((dec.right as CastExpression).type.equals("Integer")) {
-							typeSystem.get(scope).put(dec.name, "Integer")
-							return '''
-								String __res_«((dec.right as CastExpression).target as ChannelReceive).target.name» = (String) «((dec.right as CastExpression).target as ChannelReceive).target.name».take();
-								int «dec.name» = Integer.parseInt(__res_«((dec.right as CastExpression).target as ChannelReceive).target.name»);
-							'''
-						}else if((dec.right as CastExpression).type.equals("Float")){
-							typeSystem.get(scope).put(dec.name, "Double")
-							return '''
-								String __res_«((dec.right as CastExpression).target as ChannelReceive).target.name» = (String) «((dec.right as CastExpression).target as ChannelReceive).target.name».take();
-								double «dec.name» = Double.parseDouble(__res_«((dec.right as CastExpression).target as ChannelReceive).target.name»);
-							'''
-						} else if((dec.right as CastExpression).type.equals("String")){
-							typeSystem.get(scope).put(dec.name, "String")
-							return '''
-								String «dec.name» = (String) «((dec.right as CastExpression).target as ChannelReceive).target.name».take();
-							'''
-						}
-					}else if((((dec.right as CastExpression).target as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") ){
-						typeSystem.get(scope).put(dec.name, valuateArithmeticExpression((dec.right as CastExpression),scope))
-//						println("Local type system: " + typeSystem.get(scope))
-						return '''
-							«valuateArithmeticExpression((dec.right as CastExpression),scope)» «dec.name» = («valuateArithmeticExpression((dec.right as CastExpression),scope)») «((dec.right as CastExpression).target as ChannelReceive).target.name».take();
+			} else if (
+				dec.right instanceof CastExpression &&
+				(dec.right as CastExpression).target instanceof ChannelReceive
+			) {
+				val castExp = dec.right as CastExpression
+				val chanRecvTarget = (castExp.target as ChannelReceive).target
+				val chanRecvTargetFeats = (chanRecvTarget.environment.get(0).right as DeclarationObject).features
+				if (
+					chanRecvTargetFeats.get(0).value_s.contains("aws")	||
+					chanRecvTargetFeats.get(0).value_s.contains("aws-debug") ||
+					chanRecvTargetFeats.get(0).value_s.contains("azure") ||
+					(
+						chanRecvTargetFeats.get(0).value_s.equals("smp") &&
+						chanRecvTargetFeats.length == 3
+					)
+				) {
+					if (castExp.type.equals("Object")) {
+						typeSystem.get(scope).put(dec.name, "HashMap")
+
+						'''
+							String __res_«chanRecvTarget.name» = (String) «chanRecvTarget.name».take();
+							HashMap «dec.name» = new Gson().fromJson(__res_«chanRecvTarget.name»,new TypeToken<HashMap<String, String>>() {}.getType());
+						'''
+					} else if (castExp.type.equals("Integer")) {
+						typeSystem.get(scope).put(dec.name, "Integer")
+
+						'''
+							String __res_«chanRecvTarget.name» = (String) «chanRecvTarget.name».take();
+							int «dec.name» = Integer.parseInt(__res_«chanRecvTarget.name»);
+						'''
+					} else if (castExp.type.equals("Float")) {
+						typeSystem.get(scope).put(dec.name, "Double")
+
+						'''
+							String __res_«chanRecvTarget.name» = (String) «chanRecvTarget.name».take();
+							double «dec.name» = Double.parseDouble(__res_«chanRecvTarget.name»);
+						'''
+					} else if (castExp.type.equals("String")) {
+						typeSystem.get(scope).put(dec.name, "String")
+
+						'''
+							String «dec.name» = (String) «chanRecvTarget.name».take();
 						'''
 					}
-				}else { // if is an Expression to evaluate
+				} else if (chanRecvTargetFeats.get(0).value_s.equals("smp")) {
+					val type = valuateArithmeticExpression(castExp, scope)
+					typeSystem.get(scope).put(dec.name, type)
+//					println('''Local type system: «typeSystem.get(scope)»''')
 
-				typeSystem.get(scope).put(dec.name,
-					valuateArithmeticExpression(dec.right as ArithmeticExpression, scope))
-//				println("Expression " + dec.name + " typed " + typeSystem.get(scope).get(dec.name));
-//				println("Expression type system: " + typeSystem)
-				return '''«valuateArithmeticExpression(dec.right as ArithmeticExpression,scope)» «dec.name» = «generateArithmeticExpression(dec.right as ArithmeticExpression,scope)»;'''
+					'''
+						«type» «dec.name» = («type») «chanRecvTarget.name».take();
+					'''
+				}
+			} else { // if it's an Expression to evaluate
+				val aExp = dec.right as ArithmeticExpression
+				val aExpType = valuateArithmeticExpression(aExp, scope)
+				typeSystem.get(scope).put(
+					dec.name,
+					aExpType
+				)
+//				println('''Expression «dec.name» typed «aExpType»''');
+//				println('''Expression type system: «typeSystem.get(scope)»''')
+
+				'''«aExpType» «dec.name» = «generateArithmeticExpression(aExp, scope)»;'''
 			}
+		} else { // not a 'var'
+			println('''Declared «dec.typeobject» «dec.name» = «dec.right»''')
+
+			''''''
 		}
 	}
 
-	def generateConstantDeclaration(ConstantDeclaration dec, String scope) {//DA MODIFICARE ASSOLUTAMENTE FATTO SOLO PER FAR FUNZIONARE JS
-		if (dec.right instanceof NameObjectDef){
+	def generateConstantDeclaration(ConstantDeclaration dec, String scope) { // FIXME DA MODIFICARE ASSOLUTAMENTE FATTO SOLO PER FAR FUNZIONARE JS
+		if (dec.right instanceof NameObjectDef) {
 			typeSystem.get(scope).put(dec.name, "HashMap")
-			var s = '''static HashMap<Object,Object> «dec.name» = new HashMap<Object,Object>();
+			var s = '''static HashMap<Object, Object> «dec.name» = new HashMap<>();
 			'''
 			var i = 0;
-			for (f : (dec.right as NameObjectDef).features) {
-				if (f.feature != null) {
+			for (f: (dec.right as NameObjectDef).features) {
+				if (f.feature !== null) {
 					typeSystem.get(scope).put(
 						dec.name + "." + f.feature,
 						valuateArithmeticExpression(f.value, scope)
@@ -1093,148 +1124,177 @@ class FLYGenerator extends AbstractGenerator {
 					//s = s + '''«dec.name».put("«f.feature»",«generateArithmeticExpression(f.value,scope)»);
 					//'''
 				} else {
-					typeSystem.get(scope).put(dec.name + "[" + i + "]", valuateArithmeticExpression(f.value, scope))
+					typeSystem.get(scope).put(
+						dec.name + "[" + i + "]",
+						valuateArithmeticExpression(f.value, scope)
+					)
 					//s = s + '''«dec.name».put(«i»,«generateArithmeticExpression(f.value,scope)»);
 					//'''
 					i++
 				}
 			}
-			return s
-		} else if(dec.right instanceof ArrayDefinition){
-			var type_decl = (dec.right as ArrayDefinition).type
-			var real_type = ""
-			if(type_decl.equals("Integer")){
-				real_type = "int"
-			}else if(type_decl.equals("Double")){
-				real_type = "double"
-			}else if(type_decl.equals("String")){
-				real_type = "String"
+
+			s
+		} else if (dec.right instanceof ArrayDefinition) {
+			val arrayDef = dec.right as ArrayDefinition
+			var typeDecl = arrayDef.type
+			var realType = if (typeDecl.equals("Integer")) {
+				"int"
+			} else if(typeDecl.equals("Double")) {
+				"double"
+			} else if(typeDecl.equals("String")) {
+				"String"
 			}
-			if((dec.right as ArrayDefinition).indexes.length==1){ //mono-dimensional
-				typeSystem.get(scope).put(dec.name, "Array_"+type_decl)
-				var array_len = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-				var s = '''static «real_type»[] «dec.name» = new «real_type»[«array_len»];'''
-				return s
-			} else if((dec.right as ArrayDefinition).indexes.length==2){ //bi-dimensional
-				var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-				var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
-				typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col)
+			if (arrayDef.indexes.length == 1) { // mono-dimensional
+				var arrayLen = generateArithmeticExpression(arrayDef.indexes.get(0).value, scope)
+				typeSystem.get(scope).put(dec.name, '''«typeDecl»[]''')
+				arraySystem.get(scope).put(dec.name, #['''«arrayLen»'''])
 
-				var s = '''static «real_type»[][] «dec.name» = new «real_type»[«row»][«col»];'''
-				return s
-			} else if ((dec.right as ArrayDefinition).indexes.length==3) { //three-dimensional
-				var row = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(0).value,scope)
-				var col = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(1).value,scope)
-				var dep = generateArithmeticExpression((dec.right as ArrayDefinition).indexes.get(2).value,scope)
-				typeSystem.get(scope).put(dec.name, "Matrix_"+type_decl+"_"+col+"_"+dep)
-				var s = '''static «real_type»[][][] «dec.name» = new «real_type»[«row»][«col»][«dep»];'''
-				return s
+				'''static «realType»[] «dec.name» = new «realType»[«arrayLen»];'''
+			} else if (arrayDef.indexes.length == 2) { // bi-dimensional
+				var row = generateArithmeticExpression(arrayDef.indexes.get(0).value, scope)
+				var col = generateArithmeticExpression(arrayDef.indexes.get(1).value, scope)
+				typeSystem.get(scope).put(dec.name, '''«typeDecl»[][]''')
+				arraySystem.get(scope).put(dec.name, #['''«row»''', '''«col»'''])
+
+				'''static «realType»[][] «dec.name» = new «realType»[«row»][«col»];'''
+			} else if (arrayDef.indexes.length == 3) { // three-dimensional
+				var row = generateArithmeticExpression(arrayDef.indexes.get(0).value, scope)
+				var col = generateArithmeticExpression(arrayDef.indexes.get(1).value, scope)
+				var dep = generateArithmeticExpression(arrayDef.indexes.get(2).value, scope)
+				typeSystem.get(scope).put(dec.name, '''«typeDecl»[][][]''')
+				arraySystem.get(scope).put(dec.name, #['''«row»''', '''«col»''', '''«dep»'''])
+
+				'''static «realType»[][][] «dec.name» = new «realType»[«row»][«col»][«dep»];'''
 			}
-		}else if(dec.right instanceof ArrayInit){
+		} else if (dec.right instanceof ArrayInit) {
+			val arrayInit = dec.right as ArrayInit
+			val firstValue = arrayInit.values.get(0)
+				if (
+					firstValue instanceof NumberLiteral ||
+					firstValue instanceof StringLiteral ||
+					firstValue instanceof FloatLiteral
+				) { // array init
+					val realType = valuateArithmeticExpression(firstValue as ArithmeticExpression, scope)
+					val arrayLen = firstValue.values.length
+					typeSystem.get(scope).put(dec.name,'''«realType»[]''')
+					arraySystem.get(scope).put(dec.name, #['''«arrayLen»'''])
 
-				if(((dec.right as ArrayInit).values.get(0) instanceof NumberLiteral) ||
-					((dec.right as ArrayInit).values.get(0) instanceof StringLiteral) ||
-					((dec.right as ArrayInit).values.get(0) instanceof FloatLiteral)
-				){ //array init
-					var real_type = valuateArithmeticExpression((dec.right as ArrayInit).values.get(0) as ArithmeticExpression,scope)
-
-					typeSystem.get(scope).put(dec.name,"Array_"+real_type)
-					return '''
-						final static «real_type» [] «dec.name» = {«FOR e: (dec.right as ArrayInit).values»«generateArithmeticExpression(e as ArithmeticExpression,scope)»«IF e != (dec.right as ArrayInit).values.last »,«ENDIF»«ENDFOR»};
 					'''
-				} else if ((dec.right as ArrayInit).values.get(0) instanceof ArrayValue){ //matrix 2d
-					if(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof NumberLiteral ||
-						((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof StringLiteral ||
-						((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof FloatLiteral){
-						var real_type = valuateArithmeticExpression(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArithmeticExpression,scope)
-						var col = (((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.length
-						typeSystem.get(scope).put(dec.name,"Matrix_"+real_type+"_"+col)
-						var ret = '''final static «real_type» [][] «dec.name» = {'''
-						for (e : (dec.right as ArrayInit).values){
-							ret+='''{'''
-							for(e1: (e as ArrayValue).values){
-								ret+=generateArithmeticExpression(e1 as ArithmeticExpression,scope)
-								if(e1!= (e as ArrayValue).values.last){
-									ret+=''','''
+						final static «realType» [] «dec.name» = {«FOR e: arrayInit.values»«generateArithmeticExpression(e as ArithmeticExpression,scope)»«IF e != arrayInit.values.last »,«ENDIF»«ENDFOR»};
+					'''
+				} else if (firstValue instanceof ArrayValue) { // matrix 2d
+					val firstCell = firstValue.values.get(0)
+					if (
+						firstCell instanceof NumberLiteral ||
+						firstCell instanceof StringLiteral ||
+						firstCell instanceof FloatLiteral
+					) {
+						val realType = valuateArithmeticExpression(firstCell as ArithmeticExpression, scope)
+						val row = firstValue.values.length
+						val col = firstCell.values.length
+						typeSystem.get(scope).put(dec.name, '''«realType»[][]''')
+						arraySystem.get(scope).put(dec.name, #['''«row»''', '''«col»'''])
+						var ret = '''final static «realType» [][] «dec.name» = {'''
+						for (e: arrayInit.values) {
+							ret += '''{'''
+							for (e1: (e as ArrayValue).values) {
+								ret += generateArithmeticExpression(e1 as ArithmeticExpression, scope)
+								if (e1 != (e as ArrayValue).values.last) {
+									ret += ''','''
 								}
 							}
-							ret+='''}'''
-							if (e !=  (dec.right as ArrayInit).values.last){
-								ret+=''','''
+							ret += '''}'''
+							if (e != arrayInit.values.last) {
+								ret += ''','''
 							}
 						}
-						ret+='''};'''
-						return ret
-					}else if (((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) instanceof ArrayValue){ //matrix 3d
-						if ((((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) instanceof NumberLiteral ||
-							(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) instanceof StringLiteral ||
-							(((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) instanceof FloatLiteral ){
-							var real_type = valuateArithmeticExpression((((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) as ArithmeticExpression,scope)
-							var col = (((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.length
-							var dep = ((((dec.right as ArrayInit).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.get(0) as ArrayValue).values.length
-							typeSystem.get(scope).put(dec.name,"Matrix_"+real_type+"_"+col+"_"+dep)
+						ret += '''};'''
+
+						ret
+					} else if (firstCell instanceof ArrayValue) { // matrix 3d
+						val first3DCell = firstCell.values.get(0)
+						if (
+							first3DCell instanceof NumberLiteral ||
+							first3DCell instanceof StringLiteral ||
+							first3DCell instanceof FloatLiteral
+						) {
+							val real_type = valuateArithmeticExpression(first3DCell as ArithmeticExpression, scope)
+							val row = firstValue.values.length
+							val col = firstCell.values.length
+							val dep = first3DCell.values.length
+							typeSystem.get(scope).put(dec.name, '''«real_type»[][][]''')
+							arraySystem.get(scope).put(dec.name, #['''«row»''', '''«col»''', '''«dep»'''])
 							var ret = '''final static «real_type» [][][] «dec.name» = {'''
-							for (e : (dec.right as ArrayInit).values){
-								ret+='''{'''
-								for(e1: (e as ArrayValue).values){
-									ret+='''{'''
-									for(e2: ((e1 as ArrayValue).values)){
-										ret+=generateArithmeticExpression(e2 as ArithmeticExpression,scope)
-										if(e2!= (e1 as ArrayValue).values.last){
-											ret+=''','''
+							for (e: arrayInit.values) {
+								ret += '''{'''
+								for (e1: (e as ArrayValue).values) {
+									ret += '''{'''
+									for (e2: ((e1 as ArrayValue).values)) {
+										ret += generateArithmeticExpression(e2 as ArithmeticExpression, scope)
+										if (e2 != (e1 as ArrayValue).values.last) {
+											ret += ''','''
 										}
 									}
-									ret+='''}'''
-									if(e1!= (e as ArrayValue).values.last){
-										ret+=''','''
+									ret += '''}'''
+									if (e1 != (e as ArrayValue).values.last) {
+										ret += ''','''
 									}
 								}
-								ret+='''}'''
-								if (e !=  (dec.right as ArrayInit).values.last){
-									ret+=''','''
+								ret += '''}'''
+								if (e !=  arrayInit.values.last){
+									ret += ''','''
 								}
 							}
-							ret+='''};'''
-							return ret
+							ret += '''};'''
+
+							ret
 						}
 					}
-
 				}
-		} else if(dec.right instanceof ArithmeticExpression){
+		} else if (dec.right instanceof ArithmeticExpression) {
+			val aExp = dec.right as ArithmeticExpression
+			val aExpType = valuateArithmeticExpression(aExp, scope)
 			typeSystem.get(scope).put(
 				dec.name,
-				valuateArithmeticExpression(dec.right as ArithmeticExpression, scope)
+				aExpType
 			)
-			//println(dec.name + " --- " + typeSystem.get(scope).get(dec.name));
-			return '''static «valuateArithmeticExpression(dec.right as ArithmeticExpression,scope)» «dec.name» = «generateArithmeticExpression(dec.right as ArithmeticExpression,scope)»;'''
+//			println('''«dec.name» type: «aExpType»''');
+
+			'''static «aExpType» «dec.name» = «generateArithmeticExpression(aExp, scope)»;'''
 		}
 	}
 
-	def initialiseConstant(ConstantDeclaration dec,String scope) {
-		if (dec.right instanceof NameObjectDef){
+	def initialiseConstant(ConstantDeclaration dec, String scope) {
+		if (dec.right instanceof NameObjectDef) {
 			typeSystem.get(scope).put(dec.name, "HashMap")
 			var s = '''
 			'''
 			var i = 0;
-			for (f : (dec.right as NameObjectDef).features) {
-				if (f.feature != null) {
+			for (f: (dec.right as NameObjectDef).features) {
+				if (f.feature !== null) {
 					typeSystem.get(scope).put(
 						dec.name + "." + f.feature,
 						valuateArithmeticExpression(f.value, scope)
 					)
-					s = s + '''«dec.name».put("«f.feature»",«generateArithmeticExpression(f.value,scope)»);
+					s += '''«dec.name».put("«f.feature»", «generateArithmeticExpression(f.value, scope)»);
 					'''
 				} else {
 					typeSystem.get(scope).put(
 						dec.name + "[" + i + "]",
 						valuateArithmeticExpression(f.value, scope)
 					)
-					s = s + '''«dec.name».put(«i»,«generateArithmeticExpression(f.value,scope)»);
+					s += '''«dec.name».put(«i», «generateArithmeticExpression(f.value,scope)»);
 					'''
 					i++
 				}
 			}
-			return s
+
+			s
+		} else {
+//			println('''«dec.right» is not a named object definition''')
+
+			''''''
 		}
 	}
 
@@ -1247,7 +1307,7 @@ class FLYGenerator extends AbstractGenerator {
 			var path = decFileFeats.get(1).value_f.name.trim
 			switch (env) {
 				case "aws":
-					return '''
+					'''
 						if (!__s3_«decEnvName».doesBucketExist("bucket-" + __id_execution)) {
 							__s3_«decEnvName».createBucket("bucket-" + __id_execution);
 						}
@@ -1270,8 +1330,9 @@ class FLYGenerator extends AbstractGenerator {
 							__s3_«decEnvName».putObject(__putObjectRequest);
 						}
 					'''
+
 				case "aws-debug":
-					return '''
+					'''
 						if (!__s3_«decEnvName».doesBucketExist("bucket-" + __id_execution)) {
 							__s3_«decEnvName».createBucket("bucket-" + __id_execution);
 						}
@@ -1294,12 +1355,14 @@ class FLYGenerator extends AbstractGenerator {
 							__s3.putObject(__putObjectRequest);
 						}
 					'''
+
 				case "azure":
-					return '''
+					'''
 						«decEnvName».uploadFile(new File(«path»));
 					'''
+
 				default:
-					return ''''''
+					''''''
 			}
 		} else {
 			val path = decFileFeats.get(1).value_s.trim
@@ -1323,7 +1386,7 @@ class FLYGenerator extends AbstractGenerator {
 
 			switch (env) {
 				case "aws":
-					return remoteFileDownload + '''
+					remoteFileDownload + '''
 						ListObjectsV2Result __result__listObjects_«id» = __s3_«decEnvName».listObjectsV2("bucket-" + __id_execution);
 						List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
 						Boolean __exists_«nameFile»_«id» = false;
@@ -1343,8 +1406,9 @@ class FLYGenerator extends AbstractGenerator {
 							__s3_«decEnvName».putObject(__putObjectRequest);
 						}
 					'''
+
 				case "aws-debug":
-					return remoteFileDownload + '''
+					remoteFileDownload + '''
 						ListObjectsV2Result __result__listObjects_«id» = __s3_«decEnvName».listObjectsV2("bucket-" + __id_execution);
 						List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
 						Boolean __exists_«nameFile»_«id» = false;
@@ -1364,37 +1428,41 @@ class FLYGenerator extends AbstractGenerator {
 							__s3_«decEnvName».putObject(__putObjectRequest);
 						}
 					'''
+
 				case "azure":
-					return remoteFileDownload + '''
+					remoteFileDownload + '''
 						«decEnvName».uploadFile(«dec.name»);
 					'''
+
 				default:
-					return ''''''
+					''''''
 			}
 		}
 	}
 
-	def setEnvironmentDeclarationInfo(VariableDeclaration dec){
-		var env = ((dec.right as DeclarationObject).features.get(0)).value_s
-		var dec_name = dec.name
-		deployed_function.put(env,new ArrayList())
+	def setEnvironmentDeclarationInfo(VariableDeclaration dec) {
+		val decFeats = (dec.right as DeclarationObject).features
+		val env = (decFeats.get(0)).value_s
+		val dec_name = dec.name
+		deployedFunction.put(env, new ArrayList)
 		if (env.equals("smp")){
-			return '''
-				__fly_environment.put("«dec_name»", new HashMap<String,Object>());
-				__fly_environment.get("«dec_name»").put("nthread",«((dec.right as DeclarationObject).features.get(1)).value_t»);
-				«IF (dec.right as DeclarationObject).features.length==3»
-				__fly_environment.get("«dec_name»").put("language","«((dec.right as DeclarationObject).features.get(2)).value_s»");
+			'''
+				__fly_environment.put("«dec_name»", new HashMap<>());
+				__fly_environment.get("«dec_name»").put("nthread", «(decFeats.get(1)).value_t»);
+				«IF decFeats.length == 3»
+				__fly_environment.get("«dec_name»").put("language", "«(decFeats.get(2)).value_s»");
 				«ENDIF»
 			'''
 		}
 		else if (env.contains("aws")) {
-			var threads = ((dec.right as DeclarationObject).features.get(6) as DeclarationFeature).value_t
-			var memory = ((dec.right as DeclarationObject).features.get(7) as DeclarationFeature).value_t
-			var time = ((dec.right as DeclarationObject).features.get(8) as DeclarationFeature).value_t
-			var language =  ((dec.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s
-			var profile =((dec.right as DeclarationObject).features.get(1) as DeclarationFeature).value_s
-			var region=((dec.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
-			return '''
+			val threads = decFeats.get(6).value_t
+			val memory = decFeats.get(7).value_t
+			val time = decFeats.get(8).value_t
+			val language = decFeats.get(5).value_s
+			val profile = decFeats.get(1).value_s
+			val region = decFeats.get(4).value_s
+
+			'''
 				__fly_environment.put("«dec_name»", new HashMap<String,Object>());
 				__fly_environment.get("«dec_name»").put("profile","«profile»");
 				__fly_environment.get("«dec_name»").put("nthread",«threads»);
@@ -1404,30 +1472,32 @@ class FLYGenerator extends AbstractGenerator {
 				__fly_environment.get("«dec_name»").put("region","«region»");
 
 			'''
-		}else if (env.equals("azure")){
-			var threads = ((dec.right as DeclarationObject).features.get(7) as DeclarationFeature).value_t
-//			var memory = ((dec.right as DeclarationObject).features.get(7) as DeclarationFeature).value_t
-			var time = ((dec.right as DeclarationObject).features.get(8) as DeclarationFeature).value_t
-			var language =  ((dec.right as DeclarationObject).features.get(6) as DeclarationFeature).value_s
-			var profile =((dec.right as DeclarationObject).features.get(1) as DeclarationFeature).value_s
-			var region = ((dec.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s
-			return '''
-				__fly_environment.put("«dec_name»", new HashMap<String,Object>());
-				__fly_environment.get("«dec_name»").put("profile","«profile»");
-				__fly_environment.get("«dec_name»").put("nthread",«threads»);
-«««				__fly_environment.get("«dec_name»").put("memory",«memory»);
-				__fly_environment.get("«dec_name»").put("time",«time»);
-				__fly_environment.get("«dec_name»").put("language","«language»");
-				__fly_environment.get("«dec_name»").put("region","«region»");
+		} else if (env.equals("azure")) {
+			val threads = decFeats.get(7).value_t
+//			val memory = decFeats.get(7).value_t
+			val time = decFeats.get(8).value_t
+			val language = decFeats.get(6).value_s
+			val profile = decFeats.get(1).value_s
+			val region = decFeats.get(5).value_s
+
+			'''
+				__fly_environment.put("«dec_name»", new HashMap<>());
+				__fly_environment.get("«dec_name»").put("profile", "«profile»");
+				__fly_environment.get("«dec_name»").put("nthread", «threads»);
+«««				__fly_environment.get("«dec_name»").put("memory", «memory»);
+				__fly_environment.get("«dec_name»").put("time", «time»);
+				__fly_environment.get("«dec_name»").put("language", "«language»");
+				__fly_environment.get("«dec_name»").put("region", "«region»");
 
 			'''
 		}
-
 	}
 
-	def generateChannelDeclarationForLanguage(VariableDeclaration dec){
-		var env = ((dec.environment.get(0).right as DeclarationObject).features.get(0)).value_s
-		if(env.equals("smp") && (dec.environment.get(0).right as DeclarationObject).features.length==3){
+	def generateChannelDeclarationForLanguage(VariableDeclaration dec) {
+		val decEnvFeats = (dec.environment.get(0).right as DeclarationObject).features
+		var env = (decEnvFeats.get(0)).value_s
+
+		if (env.equals("smp") && decEnvFeats.length == 3) {
 			return '''
 				__socket_server_«dec.name»= new ServerSocket(9090);
 				__thread_pool_«dec.environment.get(0).name».submit(new Runnable() {
@@ -1449,31 +1519,37 @@ class FLYGenerator extends AbstractGenerator {
 				});
 			'''
 		}
+
 		return ''''''
 	}
 
-	def generateChanelDeclarationForCloud(VariableDeclaration dec) { // create a queue on AWS
-		var env = ((dec.environment.get(0).right as DeclarationObject).features.get(0)).value_s
-		var env_name = dec.environment.get(0).name
-		var local_env = res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-			filter[(right as DeclarationObject).features.get(0).value_s.equals("smp")].get(0)
-		var local = local_env.name
+	def generateChannelDeclarationForCloud(VariableDeclaration dec) { // create a queue on AWS
+		val env = ((dec.environment.get(0).right as DeclarationObject).features.get(0)).value_s
+		val envName = dec.environment.get(0).name
+		val localEnv = res.allContents
+			.toIterable
+			.filter(VariableDeclaration)
+			.filter[right instanceof DeclarationObject]
+			.filter[(right as DeclarationObject).features.get(0).value_s.equals("smp")]
+			.get(0)
+		val local = localEnv.name
+
 		switch env {
 			case "aws":
 			return '''
-				__sqs_«env_name».createQueue(new CreateQueueRequest("«dec.name»-"+__id_execution));
+				__sqs_«envName».createQueue(new CreateQueueRequest("«dec.name»-" + __id_execution));
 
-				for(int __i=0;__i< (Integer)__fly_environment.get("«local»").get("nthread");__i++){
+				for (int __i = 0; __i < (Integer) __fly_environment.get("«local»").get("nthread"); __i++) {
 					__thread_pool_«local».submit(new Callable<Object>() {
 						@Override
 						public Object call() throws Exception {
-							while(__wait_on_«dec.name») {
-								ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__sqs_«env_name».getQueueUrl("«dec.name»-"+__id_execution).getQueueUrl()).
+							while (__wait_on_«dec.name») {
+								ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__sqs_«envName».getQueueUrl("«dec.name»-" + __id_execution).getQueueUrl()).
 										withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
-								ReceiveMessageResult __res = __sqs_«env_name».receiveMessage(__recmsg);
-								for(Message msg : __res.getMessages()) {
+								ReceiveMessageResult __res = __sqs_«envName».receiveMessage(__recmsg);
+								for (Message msg: __res.getMessages()) {
 									«dec.name».put(msg.getBody());
-									__sqs_«env_name».deleteMessage(__sqs_«env_name».getQueueUrl("«dec.name»-"+__id_execution).getQueueUrl(), msg.getReceiptHandle());
+									__sqs_«envName».deleteMessage(__sqs_«envName».getQueueUrl("«dec.name»-" + __id_execution).getQueueUrl(), msg.getReceiptHandle());
 								}
 							}
 							return null;
@@ -1483,19 +1559,19 @@ class FLYGenerator extends AbstractGenerator {
 			'''
 			case "aws-debug":
 			return '''
-				__sqs_«env_name».createQueue(new CreateQueueRequest("«dec.name»-"+__id_execution));
+				__sqs_«envName».createQueue(new CreateQueueRequest("«dec.name»-"+__id_execution));
 
-				for(int __i=0;__i< (Integer)__fly_environment.get("«local»").get("nthread");__i++){
+				for (int __i = 0; __i < (Integer) __fly_environment.get("«local»").get("nthread"); __i++) {
 					__thread_pool_«local».submit(new Callable<Object>() {
 						@Override
 						public Object call() throws Exception {
-							while(__wait_on_«dec.name») {
-								ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__sqs_«env_name».getQueueUrl("«dec.name»-"+__id_execution).getQueueUrl()).
-										withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
-								ReceiveMessageResult __res = __sqs_«env_name».receiveMessage(__recmsg);
-								for(Message msg : __res.getMessages()) {
+							while (__wait_on_«dec.name») {
+								ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__sqs_«envName».getQueueUrl("«dec.name»-" + __id_execution).getQueueUrl())
+										.withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
+								ReceiveMessageResult __res = __sqs_«envName».receiveMessage(__recmsg);
+								for (Message msg : __res.getMessages()) {
 									«dec.name».put(msg.getBody());
-									__sqs_«env_name».deleteMessage(__sqs_«env_name».getQueueUrl("«dec.name»-"+__id_execution).getQueueUrl(), msg.getReceiptHandle());
+									__sqs_«envName».deleteMessage(__sqs_«envName».getQueueUrl("«dec.name»-" + __id_execution).getQueueUrl(), msg.getReceiptHandle());
 								}
 							}
 							return null;
@@ -1505,14 +1581,14 @@ class FLYGenerator extends AbstractGenerator {
 			'''
 		case "azure":
 			return '''
-				«env_name».createQueue("«dec.name»-"+__id_execution);
-				//for(int __i=0;__i< (Integer)__fly_environment.get("«local»").get("nthread");__i++){
+				«envName».createQueue("«dec.name»-"+__id_execution);
+				//for (int __i = 0; __i < (Integer) __fly_environment.get("«local»").get("nthread"); __i++) {
 					__thread_pool_«local».submit(new Callable<Object>() {
 						@Override
 						public Object call() throws Exception {
-							while(__wait_on_«dec.name») {
-								List<String> __recMsgs = «env_name».peeksFromQueue("«dec.name»-"+__id_execution,1);
-								for(String msg : __recMsgs) {
+							while (__wait_on_«dec.name») {
+								List<String> __recMsgs = «envName».peeksFromQueue("«dec.name»-" + __id_execution,1);
+								for (String msg: __recMsgs) {
 									«dec.name».put(msg);
 								}
 							}
@@ -1525,29 +1601,35 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	def generateTerminationQueue(FlyFunctionCall element) {
-		var local_env = res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-		filter[(right as DeclarationObject).features.get(0).value_s.equals("smp")].get(0)
-		var local = local_env.name
+		val localEnv = res.allContents
+			.toIterable
+			.filter(VariableDeclaration)
+			.filter[right instanceof DeclarationObject]
+			.filter[(right as DeclarationObject).features.get(0).value_s.equals("smp")]
+			.get(0)
+		var local = localEnv.name
 		var env = (element.environment.right as DeclarationObject).features.get(0).value_s
+
 		switch env {
 			case "aws":
 				return '''
-					__sqs_«element.environment.name».createQueue(new CreateQueueRequest("termination-«element.target.name»-"+__id_execution+"-«func_ID»"));
-					LinkedTransferQueue<String> __termination_«element.target.name»_ch  = new LinkedTransferQueue<String>();
-					final String __termination_«element.target.name»_url = __sqs_«element.environment.name».getQueueUrl("termination-«element.target.name»-"+__id_execution+"-«func_ID»").getQueueUrl();
-					for(int __i=0;__i< (Integer)__fly_environment.get("«local»").get("nthread");__i++){
+					__sqs_«element.environment.name».createQueue(new CreateQueueRequest("termination-«element.target.name»-" + __id_execution + "-«funcID»"));
+					LinkedTransferQueue<String> __termination_«element.target.name»_ch  = new LinkedTransferQueue<>();
+					final String __termination_«element.target.name»_url = __sqs_«element.environment.name».getQueueUrl("termination-«element.target.name»-" + __id_execution + "-«funcID»").getQueueUrl();
+					for (int __i = 0; __i < (Integer) __fly_environment.get("«local»").get("nthread"); __i++) {
 						__thread_pool_«local».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								while(__wait_on_termination_«element.target.name») {
-									ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__termination_«element.target.name»_url).
-											withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
+								while (__wait_on_termination_«element.target.name») {
+									ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__termination_«element.target.name»_url)
+											.withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
 									ReceiveMessageResult __res = __sqs_«element.environment.name».receiveMessage(__recmsg);
-									for(Message msg : __res.getMessages()) {
+									for (Message msg: __res.getMessages()) {
 										__termination_«element.target.name»_ch.put(msg.getBody());
 										__sqs_«element.environment.name».deleteMessage(__termination_«element.target.name»_url, msg.getReceiptHandle());
 									}
 								}
+
 								return null;
 							}
 						});
@@ -1555,18 +1637,18 @@ class FLYGenerator extends AbstractGenerator {
 				'''
 			case "aws-debug":
 				return '''
-					__sqs_«element.environment.name».createQueue(new CreateQueueRequest("termination-«element.target.name»-"+__id_execution+"-«func_ID»"));
-					LinkedTransferQueue<String> __termination_«element.target.name»_ch  = new LinkedTransferQueue<String>();
-					final String __termination_«element.target.name»_url = __sqs_«element.environment.name».getQueueUrl("termination-«element.target.name»-"+__id_execution+"-«func_ID»").getQueueUrl();
-					for(int __i=0;__i< (Integer)__fly_environment.get("«local»").get("nthread");__i++){
+					__sqs_«element.environment.name».createQueue(new CreateQueueRequest("termination-«element.target.name»-" + __id_execution + "-«funcID»"));
+					LinkedTransferQueue<String> __termination_«element.target.name»_ch  = new LinkedTransferQueue<>();
+					final String __termination_«element.target.name»_url = __sqs_«element.environment.name».getQueueUrl("termination-«element.target.name»-"+__id_execution+"-«funcID»").getQueueUrl();
+					for (int __i = 0; __i < (Integer)__fly_environment.get("«local»").get("nthread"); __i++) {
 						__thread_pool_«local».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								while(__wait_on_termination_«element.target.name») {
-									ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__termination_«element.target.name»_url).
-											withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
+								while (__wait_on_termination_«element.target.name») {
+									ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__termination_«element.target.name»_url)
+											.withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
 									ReceiveMessageResult __res = __sqs_«element.environment.name».receiveMessage(__recmsg);
-									for(Message msg : __res.getMessages()) {
+									for (Message msg: __res.getMessages()) {
 										__termination_«element.target.name»_ch.put(msg.getBody());
 										__sqs_«element.environment.name».deleteMessage(__termination_«element.target.name»_url, msg.getReceiptHandle());
 									}
@@ -1578,14 +1660,14 @@ class FLYGenerator extends AbstractGenerator {
 				'''
 			case "azure":
 				return '''
-					«element.environment.name».createQueue("termination-«element.target.name»-"+__id_execution+"-«func_ID»");
-					LinkedTransferQueue<String> __termination_«element.target.name»_ch  = new LinkedTransferQueue<String>();
+					«element.environment.name».createQueue("termination-«element.target.name»-" + __id_execution + "-«funcID»");
+					LinkedTransferQueue<String> __termination_«element.target.name»_ch  = new LinkedTransferQueue<>();
 					__thread_pool_«local».submit(new Callable<Object>() {
 						@Override
 						public Object call() throws Exception {
-							while(__wait_on_termination_«element.target.name») {
-								List<String> __recMsgs = azu.peeksFromQueue("termination-«element.target.name»-"+__id_execution+"-«func_ID»",10);
-								for(String msg : __recMsgs) {
+							while (__wait_on_termination_«element.target.name») {
+								List<String> __recMsgs = azu.peeksFromQueue("termination-«element.target.name»-" + __id_execution + "-«funcID»", 10);
+								for (String msg: __recMsgs) {
 									__termination_«element.target.name»_ch.put(msg);
 								}
 							}
@@ -1597,7 +1679,7 @@ class FLYGenerator extends AbstractGenerator {
 	}
 
 	// methods for ArithmeticExpression
-	def generateArithmeticExpression(ArithmeticExpression expression, String scope) {
+	def String generateArithmeticExpression(ArithmeticExpression expression, String scope) {
 		// println(expression)
 		if (expression instanceof BinaryOperation) {
 			if (expression.feature.equals("and"))
@@ -1621,17 +1703,26 @@ class FLYGenerator extends AbstractGenerator {
 			return '''"«expression.value»"'''
 		} else if (expression instanceof FloatLiteral) {
 			return '''«expression.value»'''
-		} else if(expression instanceof EnvironemtLiteral){
+		} else if(expression instanceof EnvironmentLiteral){
 			return '''__environment'''
-		}else if (expression instanceof VariableLiteral) {
+		} else if (expression instanceof VariableLiteral) {
 			return '''«expression.variable.name»'''
 		} else if (expression instanceof NameObject) {
 //			println("Name object expression: " + expression)
-			if(expression.name instanceof VariableDeclaration && expression.name.right!=null && expression.name.right instanceof CastExpression){
-				if((expression.name.right as CastExpression).type.equals("Object")){
+			if (
+				expression.name instanceof VariableDeclaration &&
+				expression.name.right !== null &&
+				expression.name.right instanceof CastExpression
+			) {
+				if ((expression.name.right as CastExpression).type.equals("Object")) {
 					return '''«expression.name.name».get("«expression.value»")'''
 				}
-			}else if(expression.name instanceof VariableDeclaration && expression.name.right!=null && expression.name.right instanceof DeclarationObject && list_environment.contains((expression.name.right as DeclarationObject).features.get(0).value_s)){
+			} else if (
+				expression.name instanceof VariableDeclaration &&
+				expression.name.right !== null &&
+				expression.name.right instanceof DeclarationObject &&
+				listEnvironment.contains((expression.name.right as DeclarationObject).features.get(0).value_s)
+			){
 				return '''__fly_environment.get(«expression.name.name»).get("«expression.value»")'''
 			}
 			else if (typeSystem.get(scope).get(expression.name.name + "." + expression.value) !== null) {
@@ -1640,40 +1731,58 @@ class FLYGenerator extends AbstractGenerator {
 				return '''«expression.name.name».get("«expression.value»")'''
 			}
 		} else if (expression instanceof IndexObject) {
-			if(typeSystem.get(scope).get(expression.name.name).contains("Array")){
-				if(expression.indexes.get(0).value2 === null)
-					return '''«expression.name.name»[«generateArithmeticExpression(expression.indexes.get(0).value,scope)»]'''
+			val expName = expression.name.name
+			val indexObjType = typeSystem.get(scope).get(expName)
+			val indexObjNumDims = indexObjectNumDims(indexObjType)
+//			println('''«expName» indexed object is «indexObjType» with «indexObjNumDims» dimensions''')
+			if (indexObjNumDims == 1) {
+//				println('''«expName» is an array''')
+				if (expression.indexes.get(0).value2 === null)
+					return '''«expName»[«generateArithmeticExpression(expression.indexes.get(0).value, scope)»]'''
 				else
-					return '''Arrays.copyOfRange(«expression.name.name», «generateArithmeticExpression(expression.indexes.get(0).value,scope)», «generateArithmeticExpression(expression.indexes.get(0).value2,scope)»)'''
-			} else if(typeSystem.get(scope).get(expression.name.name).contains("Matrix")){
-				if(expression.indexes.length==2){
-					if(expression.indexes.get(0).value2 === null && expression.indexes.get(1).value2 === null ){
-						return '''«expression.name.name»[«generateArithmeticExpression(expression.indexes.get(0).value,scope)»][«generateArithmeticExpression(expression.indexes.get(1).value,scope)»]'''
-					}else {
+					return '''Arrays.copyOfRange(«expName», «generateArithmeticExpression(expression.indexes.get(0).value, scope)», «generateArithmeticExpression(expression.indexes.get(0).value2, scope)»)'''
+			} else if (indexObjNumDims == 2 || indexObjNumDims == 3) {
+//				print('''«expName» is a ''')
+				if (expression.indexes.length == 2) {
+//					print("2D matrix")
+					if (expression.indexes.get(0).value2 === null && expression.indexes.get(1).value2 === null) {
+//						println()
+						return '''«expName»[«generateArithmeticExpression(expression.indexes.get(0).value, scope)»][«generateArithmeticExpression(expression.indexes.get(1).value, scope)»]'''
+					} else {
+//						println(" or not?")
 						return ''''''
 					}
-				}else{
-					if(expression.indexes.get(0).value2 === null && expression.indexes.get(1).value2 === null && expression.indexes.get(2).value2 === null){
-						return '''«expression.name.name»[«generateArithmeticExpression(expression.indexes.get(0).value,scope)»][«generateArithmeticExpression(expression.indexes.get(1).value,scope)»][«generateArithmeticExpression(expression.indexes.get(1).value,scope)»]'''
-					}else{
+				} else {
+//					print("3D matrix")
+					if (expression.indexes.get(0).value2 === null && expression.indexes.get(1).value2 === null && expression.indexes.get(2).value2 === null) {
+//						println()
+						return '''«expName»[«generateArithmeticExpression(expression.indexes.get(0).value, scope)»][«generateArithmeticExpression(expression.indexes.get(1).value, scope)»][«generateArithmeticExpression(expression.indexes.get(1).value, scope)»]'''
+					} else {
+//						println(" or not?")
 						return ''''''
 					}
 				}
-			} else {
-				if (typeSystem.get(scope).get(expression.name.name + "[" + generateArithmeticExpression(expression.indexes.get(0).value,scope) + "]") !== null) {
-					return '''(«typeSystem.get(scope).get(expression.name.name+"["+generateArithmeticExpression(expression.indexes.get(0).value,scope)+"]")») «expression.name.name».get(«generateArithmeticExpression(expression.indexes.get(0).value,scope)»)'''
+			} else { // FIXME what?
+//				println("WHAT?!")
+				val index = generateArithmeticExpression(expression.indexes.get(0).value, scope)
+				if (typeSystem.get(scope).get(expName + "[" + index + "]") !== null) {
+//					println('''No way, why am I doing a get() over «expName»?''')
+					return '''(«typeSystem.get(scope).get(expName + "[" + index + "]")») «expName».get(«index»)'''
 				} else {
-					if(typeSystem.get(scope).get(expression.name.name).equals("HashMap"))
-						return '''«expression.name.name».get(«generateArithmeticExpression(expression.indexes.get(0).value,scope)»)'''
-					else if(typeSystem.get(scope).get(typeSystem.get(scope).get(expression.name.name)).equals("Table")){
-						return '''«typeSystem.get(scope).get(expression.name.name)».get(_«typeSystem.get(scope).get(expression.name.name)», «generateArithmeticExpression(expression.indexes.get(0).value,scope)»)'''
+//					println('''«expName» type: «indexObjType»''')
+					if (indexObjType.equals("HashMap"))
+						return '''«expName».get(«index»)'''
+					else if (indexObjType.equals("Table")) {
+						return '''«typeSystem.get(scope).get(expName)».get(_«typeSystem.get(scope).get(expName)», «index»)'''
 					}
 				}
 			}
 		} else if (expression instanceof DatSingleObject) {
 			return '''«expression.name.name».get(«generateArithmeticExpression(expression.value1,scope)»,«generateArithmeticExpression(expression.value2,scope)»)'''
 		} else if (expression instanceof DatTableObject) {
+			//
 		} else if (expression instanceof CastExpression) {
+			val expTarget = generateArithmeticExpression(expression.target, scope)
 			if (expression.op.equals("as")) { // cast
 //				if (expression.target instanceof ChannelReceive) {
 //					var env_type = (((expression.target as ChannelReceive).target.environment as VariableDeclaration).
@@ -1704,9 +1813,9 @@ class FLYGenerator extends AbstractGenerator {
 //							}
 //						}
 //						case "azure":{
-//							if(expression.type.equals("Integer")){
+//							if (expression.type.equals("Integer")) {
 //								
-//							}else if(expression.type.equals("Float")){
+//							} else if(expression.type.equals("Float")) {
 //								
 //							}
 //						}
@@ -1714,33 +1823,40 @@ class FLYGenerator extends AbstractGenerator {
 //
 //				}
 				if (expression.type.equals("String")) {
-					return '''(String) «generateArithmeticExpression(expression.target,scope)»'''
+					return '''(String) «expTarget»'''
 				}
 				if (expression.type.equals("Integer")) {
-					return '''(int)((«generateArithmeticExpression(expression.target,scope)» instanceof Short)?
-					new Integer((Short) «generateArithmeticExpression(expression.target,scope)»):(«generateArithmeticExpression(expression.target,scope)» instanceof String)?
-					Integer.parseInt((String)«generateArithmeticExpression(expression.target,scope)») :(Integer) «generateArithmeticExpression(expression.target,scope)»)'''
+					return '''(int) ((«expTarget» instanceof Short)?
+					new Integer((Short) «expTarget»): («expTarget» instanceof String)?
+					Integer.parseInt((String)«expTarget»): (Integer) «expTarget»)'''
 				}
 				if (expression.type.equals("Double")) {
-					return '''(double)((«generateArithmeticExpression(expression.target,scope)» instanceof Float)?
-					new Double((Float) «generateArithmeticExpression(expression.target,scope)»): («generateArithmeticExpression(expression.target,scope)» instanceof String)?
-					Double.parseDouble((String)«generateArithmeticExpression(expression.target,scope)») :(Double) «generateArithmeticExpression(expression.target,scope)»)'''
+					return '''(double) ((«expTarget» instanceof Float)?
+					new Double((Float) «expTarget»): («expTarget» instanceof String)?
+					Double.parseDouble((String)«expTarget»): (Double) «expTarget»)'''
 				}
 				if (expression.type.equals("Dat")) {
-					return '''(Table) «generateArithmeticExpression(expression.target,scope)»'''
+					return '''(Table) «expTarget»'''
 				}
 				if (expression.type.equals("Date")) {
-					return '''LocalDate.parse(«generateArithmeticExpression(expression.target,scope)»)'''
+					return '''LocalDate.parse(«expTarget»)'''
 				}
 				if (expression.type.equals("Object")) {
-					return '''((HashMap<Object,Object>) «generateArithmeticExpression(expression.target,scope)»)'''
+					return '''((HashMap<Object, Object>) «expTarget»)'''
 				}
+				if (expression.type.equals("Graph")) {
+					return '''(Graph) «expTarget»'''
+				}
+			} else if (expression.op.equals("arrayof")) { // array cast
+//				val curTargetType = typeSystem.get(scope).get(expTarget)
+//				println('''Current type of «expTarget» before casting to «expression.type»[] is «curTargetType»''')
+				return '''(«expression.type»[]) «expTarget»''' // FIXME check 'arrayof' definition
 			} else { // parsing
 				if (expression.type.equals("Integer")) {
-					return '''Integer.parseInt( «generateArithmeticExpression(expression.target,scope)».toString())'''
+					return '''Integer.parseInt(«expTarget».toString())'''
 				}
 				if (expression.type.equals("Double")) {
-					return '''Double.parseDouble( «generateArithmeticExpression(expression.target,scope)».toString())'''
+					return '''Double.parseDouble(«expTarget».toString())'''
 				}
 			}
 		} else if (expression instanceof MathFunction) {
@@ -1756,10 +1872,11 @@ class FLYGenerator extends AbstractGenerator {
 				}
 			}
 			s += ")"
+
 			return s
-		}else if(expression instanceof TimeFunction){
-			if (expression.value != null){
-				return '''( System.currentTimeMillis() - «expression.value.name» )'''
+		} else if (expression instanceof TimeFunction) {
+			if (expression.value !== null) {
+				return '''(System.currentTimeMillis() - «expression.value.name»)'''
 			} else {
 				return '''System.currentTimeMillis()'''
 			}
@@ -1778,51 +1895,60 @@ class FLYGenerator extends AbstractGenerator {
 	def generateVariableFunction(VariableFunction expression, Boolean t, String scope) {
 		if (expression.target.right instanceof FlyFunctionCall) {
 			var func = expression.target.right as FlyFunctionCall
-//			var local = ( res.allContents.toIterable.filter(EnvironmentDeclaration)
-//				.filter[(right as DeclarationObject).features.get(0).value_s.equals("smp")].get(0) as EnvironmentDeclaration).name
+//			var local = (res.allContents
+//				.toIterable
+//				.filter(EnvironmentDeclaration)
+//				.filter[(right as DeclarationObject).features.get(0).value_s.equals("smp")]
+//				.get(0) as EnvironmentDeclaration)
+//				.name
 			var cred = func.environment.name
 			var s = ""
+
 			if ((func.environment.right as DeclarationObject).features.get(0).value_s.equals("smp")){
-				var feature=""
-				if(expression.feature.equals("wait")){
-					feature="get"
-				}else{
-					feature=expression.feature
+				var feature = ""
+				if (expression.feature.equals("wait")) {
+					feature = "get"
+				} else {
+					feature = expression.feature
 				}
 
-				s += "for(Future _el :" + last_func_result + "){
-							_el." +feature+ "("
-				for (exp : expression.expressions) {
+				s += "for (Future _el:" + lastFuncResult + ") {
+						_el." + feature + "("
+				for (exp: expression.expressions) {
 					s += generateArithmeticExpression(exp, scope)
 					if (exp != expression.expressions.last()) {
 						s += ","
 					}
 				}
 				s += ");
-						}"
-			}else{
-				var func_name = ((res.allContents.toIterable.filter(VariableDeclaration).filter[it.name==expression.target.name].get(0) as VariableDeclaration).right as FlyFunctionCall).target.name
-				if(expression.feature.equals("wait")){
-					s+='''
+				}"
+			} else {
+				var funcName = ((res.allContents
+					.toIterable
+					.filter(VariableDeclaration)
+					.filter[it.name == expression.target.name]
+					.get(0) as VariableDeclaration
+				).right as FlyFunctionCall).target.name
+				if (expression.feature.equals("wait")) {
+					s += '''
 						__thread_pool_«cred».submit(new Callable<Object>() {
-
 							@Override
 							public Object call() throws Exception{
 								int id_invocation = __fly_async_invocation_id.get("«expression.target.name»").get("id");
-								while(true){
-									ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__sqs_«cred».getQueueUrl("termination-«func_name»-"+__id_execution+"-"+id_invocation).getQueueUrl()).
-										withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
+								while (true) {
+									ReceiveMessageRequest __recmsg = new ReceiveMessageRequest(__sqs_«cred».getQueueUrl("termination-«funcName»-" + __id_execution + "-" + id_invocation).getQueueUrl())
+										.withWaitTimeSeconds(1).withMaxNumberOfMessages(10);
 									ReceiveMessageResult __res = __sqs_«cred».receiveMessage(__recmsg);
-									for(Message msg : __res.getMessages()) {
+									for (Message msg: __res.getMessages()) {
 										«expression.target.name».put(msg.getBody());
-										__sqs_«cred».deleteMessage(__sqs_«cred».getQueueUrl("termination-«func_name»-"+__id_execution+"-"+id_invocation).getQueueUrl(), msg.getReceiptHandle());
+										__sqs_«cred».deleteMessage(__sqs_«cred».getQueueUrl("termination-«funcName»-"+__id_execution+"-"+id_invocation).getQueueUrl(), msg.getReceiptHandle());
 									}
 								}
 							}
 
 						});
 
-						while(«expression.target.name».size()!=__fly_async_invocation_id.get("«expression.target.name»").get("num_invocation")){
+						while («expression.target.name».size() != __fly_async_invocation_id.get("«expression.target.name»").get("num_invocation")) {
 							
 						}
 					'''
@@ -1833,20 +1959,20 @@ class FLYGenerator extends AbstractGenerator {
 		}
 		if (expression.target.right instanceof DeclarationObject) {
 			var type = (expression.target.right as DeclarationObject).features.get(0).value_s
-			switch (type){
-				case "dataframe":{
-					if(expression.feature.equals("rows")){
+			switch type {
+				case "dataframe": {
+					if (expression.feature.equals("rows")) {
 						return '''
-						HashMap<Integer, HashMap<String,Object> > __«expression.target.name»_rows = new HashMap<Integer, HashMap<String,Object>>();
-								for(int __i=0; __i<«expression.target.name».rowCount();__i++) {
-									HashMap<String, Object> __tmp = new HashMap<String, Object>();
+						HashMap<Integer, HashMap<String, Object>> __«expression.target.name»_rows = new HashMap<>();
+								for (int __i = 0; __i < «expression.target.name».rowCount(); __i++) {
+									HashMap<String, Object> __tmp = new HashMap<>();
 									for (String __col : «expression.target.name».columnNames()) {
 										__tmp.put(__col,«expression.target.name».get(__i, «expression.target.name».columnIndex(__col)));
 									}
-											__«expression.target.name»_rows.put(__i,__tmp);
-										}
+									__«expression.target.name»_rows.put(__i,__tmp);
+								}
 						'''
-					}else if(expression.feature.equals("delete")){
+					} else if (expression.feature.equals("delete")) {
 						var path = ((expression.target as VariableDeclaration).right as DeclarationObject).features.get(1).value_s;
 						var filename = path.split("/").last
 						return '''
@@ -1861,22 +1987,29 @@ class FLYGenerator extends AbstractGenerator {
 						'''
 					}
 				}
-				case "channel":{
-					if(expression.feature.equals("close")){
-//						println("channel on " + ((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s)
+				case "channel": {
+					if (expression.feature.equals("close")) {
+						val decEnvFeats = (
+							(expression.target as VariableDeclaration)
+								.environment
+								.get(0)
+								.right as DeclarationObject
+						).features
+//						println('''channel on «decEnvFeats.get(0).value_s»''')
+
 						return '''
-							«IF !((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") »
+							«IF !decEnvFeats.get(0).value_s.equals("smp") »
 								__wait_on_«expression.target.name» = false;
-							«ELSEIF ((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp") &&
-							((expression.target as VariableDeclaration).environment.get(0).right as DeclarationObject).features.length==3»
+							«ELSEIF decEnvFeats.get(0).value_s.equals("smp") &&
+							decEnvFeats.length == 3»
 								__socket_server_«expression.target.name».close();
 							«ENDIF»
 						'''
 					}
 				}
-				default :{
+				default: {
 					var s = expression.target.name + "." + expression.feature + "("
-					for (exp : expression.expressions) {
+					for (exp: expression.expressions) {
 						s += generateArithmeticExpression(exp, scope)
 						if (exp != expression.expressions.last()) {
 							s += ","
@@ -1886,10 +2019,11 @@ class FLYGenerator extends AbstractGenerator {
 					if (t) {
 						s += ";"
 					}
+
 					return s
 				}
 			}
-		}else{
+		} else {
 			var s = expression.target.name + "." + expression.feature + "("
 			for (exp : expression.expressions) {
 				s += generateArithmeticExpression(exp, scope)
@@ -1901,28 +2035,30 @@ class FLYGenerator extends AbstractGenerator {
 			if (t) {
 				s += ";"
 			}
+
 			return s
 		}
 	}
 
 	// methods for statement
-	def generateBlockExpression(BlockExpression exp, String scope) '''
+	override generateBlockExpression(BlockExpression exp, String scope, boolean local) '''
 		{
 			«FOR element: exp.expressions»
-				«generateExpression(element, scope)»
+				«generateExpression(element, scope, local)»
 			«ENDFOR»
 		}
 	'''
 
 	def generateFunctionReturn(FunctionReturn return1, String scope) {
 		'''
-			return «generateArithmeticExpression(return1.expression,scope)»;
-		'''
+
+		return «generateArithmeticExpression(return1.expression, scope)»;'''
 	}
 
 	def generateLocalFunctionCall(LocalFunctionCall call, String scope) {
 		var s = call.target.name + "("
-		if (call.input != null) {
+
+		if (call.input !== null) {
 			for (input : call.input.inputs) {
 				s += generateArithmeticExpression(input, scope)
 				if (input != call.input.inputs.last) {
@@ -1931,107 +2067,115 @@ class FLYGenerator extends AbstractGenerator {
 			}
 		}
 		s += ");"
+
 		return s
 	}
 
 	def generateFlyFunctionCall(FlyFunctionCall call, String scope) {
 		var env = ((call.environment.right as DeclarationObject).features.get(0)).value_s
 		switch env {
-			case "smp": return generateLocalFlyFunction(call, scope)
-			case "aws": return generateAWSFlyFunctionCall(call, scope)
-			case "aws-debug": return generateAWSFlyFunctionCall(call, scope)
-			case "azure": return generateAzureFlyFunctionCall(call, scope)
+			case "smp": generateLocalFlyFunction(call, scope)
+			case "aws",
+			case "aws-debug": generateAWSFlyFunctionCall(call, scope)
+			case "azure": generateAzureFlyFunctionCall(call, scope)
 		}
 	}
 
 	def generateLocalFlyFunction(FlyFunctionCall call, String scope) {
+		val function = call.target.name
+		val callID = '''«function»_«funcID»'''
+
 		var s = ''''''
-		if ((call.input as FunctionInput).is_for_index) { // 'for 'keyword
+		if (call.input !== null && call.input.is_for_index) { // 'in' keyword
 			s = '''
-				final List<Future<Object>> «call.target.name»_«func_ID»_return = new ArrayList<Future<Object>>();
+				final List<Future<Object>> «callID»_return = new ArrayList<>();
 			'''
+
 			if (call.isIsAsync && call.isIs_thenall) { // chiamata asincrona con thenall
 				s += '''
 					final AtomicInteger __count = new AtomicInteger(0);
 				'''
 			}
 
-			if ((call.input as FunctionInput).f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get(((call.input as FunctionInput).f_index as VariableLiteral).variable.name) !=
-					null &&
-				typeSystem.get(scope).get(((call.input as FunctionInput).f_index as VariableLiteral).variable.name).
-					equals("HashMap")) { // f_index is a reference to an object
+			val callVarName = if (call.input.f_index instanceof VariableLiteral)
+				(call.input.f_index as VariableLiteral).variable.name
+			val callVarID = if (callVarName !== null)
+				'''«callVarName»_«funcID»'''
+
+			if (
+				call.input.f_index instanceof VariableLiteral &&
+				typeSystem.get(scope).get(callVarName) !== null &&
+				typeSystem.get(scope).get(callVarName).equals("HashMap")
+			) { // f_index is a reference to an object
+				val aExp = generateArithmeticExpression((call.input as FunctionInput).f_index, scope)
 				if (call.isIsAsync && call.isIs_thenall) {
 					s += '''
-						final int __numThread = «generateArithmeticExpression((call.input as FunctionInput).f_index,scope)».keySet().size()-1;
+						final int __numThread = «aExp».keySet().size() - 1;
 					'''
 				}
 				s += '''
-					for(Object key: «generateArithmeticExpression((call.input as FunctionInput).f_index,scope)».keySet()){
-						final Object _el = «generateArithmeticExpression((call.input as FunctionInput).f_index,scope)».get(key);
-						Future<Object> _f = __thread_pool_«call.environment.name».submit(new Callable<Object>(){
-
+					for(Object key: «aExp».keySet()){
+						final Object _el = «aExp».get(key);
+						Future<Object> _f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							public Object call() throws Exception {
-								// TODO Auto-generated method stub
-
-								Object __ret = «call.target.name»(«IF call.target.parameters.length==1»_el«ENDIF»);
+								Object __ret = «call.target.name»(«IF call.target.parameters.length == 1»_el«ENDIF»);
 								«IF call.isIs_then»
 									«call.then.name»();
 								«ENDIF»
 								«IF call.isIsAsync && call.isIs_thenall»
-									if(__count.getAndIncrement()==__numThread){
-											__asyncTermination.put("Termination");
+									if (__count.getAndIncrement() == __numThread) {
+										__asyncTermination.put("Termination");
 									}
 								«ENDIF»
 								return __ret;
 							}
 						});
-						«call.target.name»_«func_ID»_return.add(_f);
+						«callID»_return.add(_f);
 					}
 				'''
-			} else if ((call.input as FunctionInput).f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get(((call.input as FunctionInput).f_index as VariableLiteral).variable.name) !=
-					null &&
-				typeSystem.get(scope).get(((call.input as FunctionInput).f_index as VariableLiteral).variable.name).
-					equals("Table")) { // f_index is a reference to a Table
-			// if (call.isIsAsync && call.isIs_thenall) {
+			} else if (
+				(call.input as FunctionInput).f_index instanceof VariableLiteral &&
+				typeSystem.get(scope).get(callVarName) !== null &&
+				typeSystem.get(scope).get(callVarName).equals("Table")
+			) { // f_index is a reference to a Table
+				// if (call.isIsAsync && call.isIs_thenall) {
 				s += '''
 					final int __numThread = (Integer) __fly_environment.get("«call.environment.name»").get("nthread");
-					ArrayList<Table> __list_data_«call.target.name» = new ArrayList<Table>();
+					ArrayList<Table> __list_data_«call.target.name» = new ArrayList<>();
 					for (int __i = 0; __i < __numThread; __i++) {
-						__list_data_«call.target.name».add(«((call.input as FunctionInput).f_index as VariableLiteral).variable.name».emptyCopy());
+						__list_data_«call.target.name».add(«callVarName».emptyCopy());
 					}
-					for(int __i=0; __i<«generateArithmeticExpression((call.input as FunctionInput).f_index,scope)».rowCount();__i++) {
-						__list_data_«call.target.name».get(__i%__numThread).addRow(__i,«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»);
+					for (int __i = 0; __i<«generateArithmeticExpression((call.input as FunctionInput).f_index,scope)».rowCount(); __i++) {
+						__list_data_«call.target.name».get(__i % __numThread).addRow(__i, «callVarName»);
 					}
-					«IF (call.environment.right as DeclarationObject).features.length==3»
-						final ServerSocket __server_«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»_data = new ServerSocket(9091,100);
+					«IF (call.environment.right as DeclarationObject).features.length == 3»
+						final ServerSocket __server_«callVarName»_data = new ServerSocket(9091, 100);
 					«ENDIF»
-					for(int __i=0; __i<__numThread;__i++) {
-						final int __index=__i;
-						«IF (call.environment.right as DeclarationObject).features.length==3»
-							final String __«((call.input as FunctionInput).f_index as VariableLiteral).variable.name» = __generateString(__list_data_«call.target.name».get(__index));
+					for (int __i = 0; __i < __numThread; __i++) {
+						final int __index = __i;
+						«IF (call.environment.right as DeclarationObject).features.length == 3»
+							final String __«callVarName» = __generateString(__list_data_«call.target.name».get(__index));
 						«ELSE»
-							final Table __«((call.input as FunctionInput).f_index as VariableLiteral).variable.name» =__list_data_«call.target.name».get(__index);
+							final Table __«callVarName» =__list_data_«call.target.name».get(__index);
 						«ENDIF»
 						Future<Object> __f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							public Object call() throws Exception {
-								«IF (call.environment.right as DeclarationObject).features.length==3»
+								«IF (call.environment.right as DeclarationObject).features.length == 3»
 									«IF (call.environment.right as DeclarationObject).features.get(2).value_s.contains("python")»
-										ProcessBuilder __processBuilder = new ProcessBuilder("python",new File("src-gen/«call.target.name».py").getAbsolutePath()«IF call.target.parameters.length==1»,__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»«ENDIF»); //for the moment listen on 9090
+										ProcessBuilder __processBuilder = new ProcessBuilder("python",new File("src-gen/«call.target.name».py").getAbsolutePath()«IF call.target.parameters.length==1»,__«callVarName»«ENDIF»); //for the moment listen on 9090
 									«ELSEIF (call.environment.right as DeclarationObject).features.get(2).value_s.contains("nodejs") »
-										ProcessBuilder __processBuilder = new ProcessBuilder("nodejs",new File("src-gen/«call.target.name».js").getAbsolutePath(),«IF call.target.parameters.length==1»,__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»«ENDIF»); //for the moment listen on 9090
+										ProcessBuilder __processBuilder = new ProcessBuilder("nodejs",new File("src-gen/«call.target.name».js").getAbsolutePath(),«IF call.target.parameters.length==1»,__«callVarName»«ENDIF»); //for the moment listen on 9090
 									«ENDIF»
 									Process __p;
 									try {
 										__p = __processBuilder.start();
-										Socket __socket_data = __server_«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»_data.accept() ;
+										Socket __socket_data = __server_«callVarName»_data.accept();
 										OutputStreamWriter __socket_data_output = new OutputStreamWriter(__socket_data.getOutputStream());
-										__socket_data_output.write(__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»);
+										__socket_data_output.write(__«callVarName»);
 										__socket_data_output.flush();
 										__socket_data.close();
 										__p.waitFor();
-										if(__p.exitValue()!=0){
+										if (__p.exitValue() != 0) {
 											System.out.println("Error in local execution of «call.target.name»");
 											System.exit(1);
 										}
@@ -2040,12 +2184,12 @@ class FLYGenerator extends AbstractGenerator {
 									}
 									return null;
 								«ELSE»
-									Object __ret = «call.target.name»(«IF call.target.parameters.length==1»__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»«ENDIF»);
+									Object __ret = «call.target.name»(«IF call.target.parameters.length==1»__«callVarName»«ENDIF»);
 									«IF call.isIs_then»
 										«call.then.name»();
 									«ENDIF»
 									«IF call.isIsAsync && call.isIs_thenall»
-										if(__count.getAndIncrement()==__numThread){
+										if (__count.getAndIncrement() == __numThread) {
 											__asyncTermination.put("Termination");
 										}
 									«ENDIF»
@@ -2054,45 +2198,45 @@ class FLYGenerator extends AbstractGenerator {
 							}
 
 						});
-						«call.target.name»_«func_ID»_return.add(__f);
+						«callID»_return.add(__f);
 					}
 				'''
-			} else if ((call.input as FunctionInput).f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get(((call.input as FunctionInput).f_index as VariableLiteral).variable.name) !=
-					null &&
-				typeSystem.get(scope).get(((call.input as FunctionInput).f_index as VariableLiteral).variable.name).
-					equals("File")) { // f_index is a File txt
-					s+='''
+			} else if (
+				(call.input as FunctionInput).f_index instanceof VariableLiteral &&
+				typeSystem.get(scope).get(callVarName) !== null &&
+				typeSystem.get(scope).get(callVarName).equals("File")
+			) { // f_index is a File txt
+					s += '''
 						final int __numThread = (Integer) __fly_environment.get("«call.environment.name»").get("nthread");
-						ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name» = new ArrayList<StringBuilder>();
+						ArrayList<StringBuilder> __temp_«callVarName» = new ArrayList<>();
 						«IF (call.environment.right as DeclarationObject).features.length==3»
-							final ServerSocket __server_«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»_data = new ServerSocket(9091,100);
+							final ServerSocket __server_«callVarName»_data = new ServerSocket(9091, 100);
 						«ENDIF»
-						int __temp_i_«(call.input.f_index as VariableLiteral).variable.name» = 0;
-						Scanner __scanner_«(call.input.f_index as VariableLiteral).variable.name» = new Scanner(«(call.input.f_index as VariableLiteral).variable.name»);
-						while(__scanner_«(call.input.f_index as VariableLiteral).variable.name».hasNextLine()){
-							String __tmp_line = __scanner_«(call.input.f_index as VariableLiteral).variable.name».nextLine();
-							try{
-								__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append(__tmp_line);
-								__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append("\n");
-							}catch(Exception e){
-								__temp_«(call.input.f_index as VariableLiteral).variable.name».add(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread,new StringBuilder());
-								__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append(__tmp_line);
-								__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append("\n");
+						int __temp_i_«callVarName» = 0;
+						Scanner __scanner_«callVarName» = new Scanner(«callVarName»);
+						while (__scanner_«callVarName».hasNextLine()) {
+							String __tmp_line = __scanner_«callVarName».nextLine();
+							try {
+								__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append(__tmp_line);
+								__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append("\n");
+							} catch (Exception e) {
+								__temp_«callVarName».add(__temp_i_«callVarName» % __numThread, new StringBuilder());
+								__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append(__tmp_line);
+								__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append("\n");
 							}
-							__temp_i_«(call.input.f_index as VariableLiteral).variable.name»++;
+							__temp_i_«callVarName»++;
 						}
-						for(int __i=0; __i<__numThread;__i++) {
-							final int __index=__i;
-							«IF (call.environment.right as DeclarationObject).features.length==3»
-								final String __«((call.input as FunctionInput).f_index as VariableLiteral).variable.name» = __generateString(__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__index).toString());
+						for (int __i = 0; __i < __numThread; __i++) {
+							final int __index = __i;
+							«IF (call.environment.right as DeclarationObject).features.length == 3»
+								final String __«callVarName» = __generateString(__temp_«callVarName».get(__index).toString());
 							«ELSE»
-								final File __«((call.input as FunctionInput).f_index as VariableLiteral).variable.name» = new File("tmp"+__index);
-								FileUtils.writeStringToFile(__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»,__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__index).toString(),"UTF-8");
+								final File __«callVarName» = new File("tmp" + __index);
+								FileUtils.writeStringToFile(__«callVarName», __temp_«callVarName».get(__index).toString(), "UTF-8");
 							«ENDIF»
 							Future<Object> __f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 								public Object call() throws Exception {
-									«IF (call.environment.right as DeclarationObject).features.length==3»
+									«IF (call.environment.right as DeclarationObject).features.length == 3»
 										«IF (call.environment.right as DeclarationObject).features.get(2).value_s.contains("python")»
 											ProcessBuilder __processBuilder = new ProcessBuilder("python3",new File("src-gen/«call.target.name».py").getAbsolutePath()); //for the moment listen on 9090
 											__processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
@@ -2103,13 +2247,13 @@ class FLYGenerator extends AbstractGenerator {
 										Process __p;
 										try {
 											__p = __processBuilder.start();
-											Socket __socket_data = __server_«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»_data.accept() ;
+											Socket __socket_data = __server_«callVarName»_data.accept();
 											OutputStreamWriter __socket_data_output = new OutputStreamWriter(__socket_data.getOutputStream());
-											__socket_data_output.write(__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»);
+											__socket_data_output.write(__«callVarName»);
 											__socket_data_output.flush();
 											__socket_data.close();
 											__p.waitFor();
-											if(__p.exitValue()!=0){
+											if (__p.exitValue() != 0) {
 												System.out.println("Error in local execution of «call.target.name»");
 												System.exit(1);
 											}
@@ -2118,12 +2262,12 @@ class FLYGenerator extends AbstractGenerator {
 										}
 										return null;
 									«ELSE»
-										Object __ret = «call.target.name»(«IF call.target.parameters.length==1»__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»«ENDIF»);
+										Object __ret = «call.target.name»(«IF call.target.parameters.length == 1»__«callVarName»«ENDIF»);
 										«IF call.isIs_then»
 											«call.then.name»();
 										«ENDIF»
 										«IF call.isIsAsync && call.isIs_thenall»
-											if(__count.getAndIncrement()==__numThread){
+											if (__count.getAndIncrement() == __numThread) {
 												__asyncTermination.put("Termination");
 											}
 										«ENDIF»
@@ -2131,118 +2275,129 @@ class FLYGenerator extends AbstractGenerator {
 									«ENDIF»
 								}
 							});
-							«call.target.name»_«func_ID»_return.add(__f);
+							«callID»_return.add(__f);
 						}
 					'''
-			} else if(call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).contains("Directory")){
-				s+='''
+			} else if (
+				call.input.f_index instanceof VariableLiteral &&
+				typeSystem.get(scope).get(callVarName).contains("Directory")
+			) {
+				s += '''
 					final int __numThread = (Integer) __fly_environment.get("«call.environment.name»").get("nthread");
-					ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name» = new ArrayList<StringBuilder>();
-					«IF (call.environment.right as DeclarationObject).features.length==3»
-						final ServerSocket __server_«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»_data = new ServerSocket(9091,100);
+					ArrayList<StringBuilder> __temp_«callVarName» = new ArrayList<>();
+					«IF (call.environment.right as DeclarationObject).features.length == 3»
+						final ServerSocket __server_«callVarName»_data = new ServerSocket(9091, 100);
 					«ENDIF»
-					int __temp_i_«(call.input.f_index as VariableLiteral).variable.name» = 0;
-					for(String s: «(call.input.f_index as VariableLiteral).variable.name».list()){
-						try{
-							__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append(«(call.input.f_index as VariableLiteral).variable.name».getAbsolutePath()+"/"+s);
-							__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append("\n");
-						}catch(Exception e){
-							__temp_«(call.input.f_index as VariableLiteral).variable.name».add(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread,new StringBuilder());
-							__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append(«(call.input.f_index as VariableLiteral).variable.name».getAbsolutePath()+"/"+s);
-							__temp_«(call.input.f_index as VariableLiteral).variable.name».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name» % __numThread).append("\n");
+					int __temp_i_«callVarName» = 0;
+					for (String s: «callVarName».list()) {
+						try {
+							__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append(«callVarName».getAbsolutePath() + "/" + s);
+							__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append("\n");
+						} catch (Exception e) {
+							__temp_«callVarName».add(__temp_i_«callVarName» % __numThread, new StringBuilder());
+							__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append(«callVarName».getAbsolutePath() + "/" + s);
+							__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append("\n");
 						}
-						__temp_i_«(call.input.f_index as VariableLiteral).variable.name»++;
+						__temp_i_«callVarName»++;
 					}
-					for(int __i=0; __i<__numThread;__i++) {
+					for (int __i = 0; __i < __numThread; __i++) {
 						final int __index=__i;
-						final String[] __«((call.input as FunctionInput).f_index as VariableLiteral).variable.name» = __temp_«(call.input.f_index as VariableLiteral).variable.name».get(__index).toString().split("\n");
+						final String[] __«callVarName» = __temp_«callVarName».get(__index).toString().split("\n");
 						Future<Object> __f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							public Object call() throws Exception {
-								Object __ret = «call.target.name»(«IF call.target.parameters.length==1»__«((call.input as FunctionInput).f_index as VariableLiteral).variable.name»«ENDIF»);
+								Object __ret = «call.target.name»(«IF call.target.parameters.length==1»__«callVarName»«ENDIF»);
 								«IF call.isIs_then»
 									«call.then.name»();
 								«ENDIF»
 								«IF call.isIsAsync && call.isIs_thenall»
-									if(__count.getAndIncrement()==__numThread){
+									if (__count.getAndIncrement() == __numThread) {
 										__asyncTermination.put("Termination");
 									}
 								«ENDIF»
 								return __ret;
 							}
 						});
-						«call.target.name»_«func_ID»_return.add(__f);
+						«callID»_return.add(__f);
 					}
 				'''
 			} else if(
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).contains("Matrix")
-			){
-				if(call.input.split.equals("row")){ //row
-					s+='''
-						int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«call.environment.name»").get("nthread");
-						ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
-						int __current_row_«(call.input.f_index as VariableLiteral).variable.name» = 0;
-						int __rows = «(call.input.f_index as VariableLiteral).variable.name».length;
-						for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
-							int __n_rows =  __rows/__num_proc_«call.target.name»_«func_ID»;
-							if(__rows%__num_proc_«call.target.name»_«func_ID» !=0 && __i< __rows%__num_proc_«call.target.name»_«func_ID» ){
+				typeSystem.get(scope).get(callVarName).contains("Matrix") // FIXME edit according to IndexObject refactoring
+			) {
+				if (call.input.split.equals("row")) { //row
+					s += '''
+						int __num_proc_«callID» = (int) __fly_environment.get("«call.environment.name»").get("nthread");
+						ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
+						int __current_row_«callVarName» = 0;
+						int __rows = «callVarName».length;
+						for (int __i = 0; __i < __num_proc_«callID»; __i++) {
+							int __n_rows = __rows / __num_proc_«callID»;
+							if (__rows % __num_proc_«callID» != 0 && __i < __rows % __num_proc_«callID») {
 								__n_rows++;
 							}
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».add(__i,new StringBuilder());
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).append("{\"rows\":"+__n_rows+",\"cols\":"+«(call.input.f_index as VariableLiteral).variable.name»[0].length+",\"values\":[");
-							for(int __j=__current_row_«(call.input.f_index as VariableLiteral).variable.name»; __j<__current_row_«(call.input.f_index as VariableLiteral).variable.name»+__n_rows;__j++){
-								for(int __z = 0; __z<«(call.input.f_index as VariableLiteral).variable.name»[__j].length;__z++){
-									__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).append("{\"x\":"+__j+",\"y\":"+__z+",\"value\":"+«(call.input.f_index as VariableLiteral).variable.name»[__j][__z]+"},");
+							__temp_«callVarID».add(__i, new StringBuilder());
+							__temp_«callVarID».get(__i).append("{\"rows\":"+__n_rows+",\"cols\":"+«callVarName»[0].length+",\"values\":[");
+							for (int __j = __current_row_«callVarName»; __j < __current_row_«callVarName» + __n_rows; __j++) {
+								for (int __z = 0; __z < «callVarName»[__j].length; __z++) {
+									__temp_«callVarID».get(__i).append("{\"x\":"+__j+",\"y\":"+__z+",\"value\":"+«callVarName»[__j][__z]+"},");
 								}
-								if(__j == __current_row_«(call.input.f_index as VariableLiteral).variable.name» + __n_rows-1) {
-									__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).deleteCharAt(__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).length()-1);
-									__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).append("]}");
+								if (__j == __current_row_«callVarName» + __n_rows - 1) {
+									__temp_«callVarID».get(__i).deleteCharAt(__temp_«callVarID».get(__i).length() - 1);
+									__temp_«callVarID».get(__i).append("]}");
 								}
 							}
-							__current_row_«(call.input.f_index as VariableLiteral).variable.name»+=__n_rows;
+							__current_row_«callVarName» += __n_rows;
 						}
 					'''
 				}
 			} else { // f_index is a range
+				val rLeft = (call.input.f_index as RangeLiteral).value1
+				val rRight = (call.input.f_index as RangeLiteral).value2
 				if (call.isIsAsync && call.isIs_thenall) {
 					s += '''
-						final int __numThread = «((call.input as FunctionInput).f_index as RangeLiteral ).value2 - ((call.input as FunctionInput).f_index as RangeLiteral ).value1» - 1;
+						final int __numThread = «rRight - rLeft» - 1;
 					'''
 				}
 
-				var value1 = if ((((call.input as FunctionInput).f_index as RangeLiteral ).value_l1) != null) ((call.input as FunctionInput).f_index as RangeLiteral ).value_l1.name  else ((call.input as FunctionInput).f_index as RangeLiteral ).value1  ;
-				var value2 = if ((((call.input as FunctionInput).f_index as RangeLiteral ).value_l2) != null) ((call.input as FunctionInput).f_index as RangeLiteral ).value_l2.name  else ((call.input as FunctionInput).f_index as RangeLiteral ).value2  ;
+				val value1 = if (((call.input.f_index as RangeLiteral).value_l1) !== null)
+					(call.input.f_index as RangeLiteral).value_l1.name
+				else
+					rLeft
+				val value2 = if (((call.input.f_index as RangeLiteral).value_l2) !== null)
+					(call.input.f_index as RangeLiteral).value_l2.name
+				else
+					rRight
 
 				s += '''
-					for(int _i=«value1»;_i<«value2»;_i++){
+					for (int _i = «value1»; _i < «value2»; _i++) {
 						final int __i = _i;
-						Future<Object> _f = __thread_pool_«call.environment.name».submit(new Callable<Object>(){
+						Future<Object> _f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							public Object call() throws Exception {
-								Object __ret = «call.target.name»(«IF call.target.parameters.length==1»__i«ENDIF»);
+								Object __ret = «call.target.name»(«IF call.target.parameters.length == 1»__i«ENDIF»);
 								«IF call.isIs_then»
 									«call.then.name»();
 								«ENDIF»
 								«IF call.isIsAsync && call.isIs_thenall»
-									if(__count.getAndIncrement()==__numThread){
+									if (__count.getAndIncrement() == __numThread) {
 										__asyncTermination.put("Termination");
 									}
 								«ENDIF»
 								return __ret;
 							}
 						});
-						«call.target.name»_«func_ID»_return.add(_f);
+						«callID»_return.add(_f);
 					}
 				'''
 			}
-			last_func_result = call.target.name + "_" + func_ID + "_return"
+
+			lastFuncResult = '''«callID»_return'''
 
 			if (!call.isAsync) {
 				s += '''
-					for(Future _f : «call.target.name»_«func_ID»_return){
-						try{
+					for (Future<Object> _f : «callID»_return) {
+						try {
 							_f.get();
-						} catch(Exception e){
+						} catch (Exception e) {
 							e.printStackTrace();
 						}
 					}
@@ -2255,12 +2410,10 @@ class FLYGenerator extends AbstractGenerator {
 
 			if (call.isIsAsync && call.isIs_thenall) {
 				s += '''
-					Future<Object> __call = __thread_pool_«call.environment.name».submit(new Callable<Object>(){
-
+					Future<Object> __call = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							public Object call() throws Exception {
-								//TODO Auto-generated method stub
-										__asyncTermination.take();
-										«call.thenall.name»();
+								__asyncTermination.take();
+								«call.thenall.name»();
 								return null;
 							}
 						});
@@ -2268,43 +2421,49 @@ class FLYGenerator extends AbstractGenerator {
 				'''
 			}
 		} else { // no 'in' keyword
+			println('''Running FLY function with no range...''')
 			var par_id = 0
-			var par_1 = '''
-			''' // parameter declaration
-			var par_2 = '''
-			''' // passing parameter
-			for (el : call.input.expressions) {
+			var par_1 = '''''' // parameter declaration
+			var par_2 = '''''' // passing parameter
+
+			for (el: call.input.expressions) {
+				val parType = valuateArithmeticExpression(el, scope)
 				par_1 += '''
-					final Object _par_«par_id» = «generateArithmeticExpression(el,scope)»;
+					final «parType» _par_«par_id» = «generateArithmeticExpression(el, scope)»;
 				'''
-				par_2 += ''' _par_«par_id»	'''
+				par_2 += '''_par_«par_id»'''
 				if (el != call.input.expressions.last) {
-					par_2 += ''','''
+					par_2 += ''', '''
 				}
 				par_id++
 			}
+
 			s += '''
+				int __num_proc_«callID» = (int) __fly_environment.get("«call.environment.name»").get("nthread");
 				«par_1»
-				Future<Object> _f_«func_ID» = __thread_pool_«call.environment.name».submit(new Callable<Object>(){
+				Future<Object> _f_«funcID» = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 					public Object call() throws Exception {
 						return «call.target.name»(«par_2»);
 					}
 				});
 			'''
+
 			if (!call.isIsAsync) {
 				s += '''
-					try{
-						_f_«func_ID».get();
+					try {
+						_f_«funcID».get();
 						«IF call.is_then »
 							«call.then.name»();
 						«ENDIF»
-					} catch(Exception e){
+					} catch (Exception e) {
 						e.printStackTrace();
 					}
 				'''
 			}
 		}
-		func_ID++
+
+		funcID++
+
 		return s
 	}
 
@@ -2312,254 +2471,280 @@ class FLYGenerator extends AbstractGenerator {
 		// generate the aws lambda function
 		var async = call.isIsAsync
 		var cred = call.environment.name
-		var region = ((call.environment.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
-		var function = call.target.name
+//		var region = ((call.environment.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
+		val function = call.target.name
+		val callID = '''«function»_«funcID»'''
 		var ret = ''''''
-		if (call.input.isIs_for_index) {
 
-			//create the termination SQS queue
-			ret+='''
-				ArrayList<Future<Object>> __sync_list_«call.target.name»_«func_ID» = new ArrayList<Future<Object>>();
-			'''
+		// create the termination SQS queue
+		ret += '''
+			ArrayList<Future<Object>> __sync_list_«callID» = new ArrayList<>();
+		'''
+
+		if (call.input.isIs_for_index) {
+			val callVarName = if (call.input.f_index instanceof VariableLiteral)
+				(call.input.f_index as VariableLiteral).variable.name
+			val callVarID = if (callVarName !== null)
+				'''«callVarName»_«funcID»'''
 
 			if (call.input.f_index instanceof RangeLiteral) {
+				val leftR = (call.input.f_index as RangeLiteral).value1
+				val rightR = (call.input.f_index as RangeLiteral).value2
 				ret += '''
-					int __num_proc_«call.target.name»_«func_ID» = «(call.input.f_index as RangeLiteral).value2 - (call.input.f_index as RangeLiteral).value1 » ;
-					for(int ___i=«(call.input.f_index as RangeLiteral).value1»;___i<«(call.input.f_index as RangeLiteral).value2»;___i++){
-						final String __s_temp = "{\"id\": «func_ID»,\"data\":"+String.valueOf(___i)+"}";
+					int __num_proc_«callID» = «rightR - leftR»;
+
+					for (int ___i = «leftR»; ___i < «rightR»; ___i++) {
+						final String __s_temp = "{\"id\": «funcID», \"data\": " + String.valueOf(___i) + "}";
 						Future<Object> f = __thread_pool_«cred».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								// TODO Auto-generated method stub
 								__lambda_«cred».invoke(new InvokeRequest()
 									.withInvocationType("Event")
-									.withFunctionName("«call.target.name»_"+__id_execution)
+									.withFunctionName("«call.target.name»_" + __id_execution)
 									.withPayload(__s_temp));
 								return null;
 							}
 						});
-					__sync_list_«call.target.name»_«func_ID».add(f);
+						__sync_list_«callID».add(f);
 					}
 				'''
 			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("Table")
+				typeSystem.get(scope).get(callVarName).equals("Table")
 			) {
-				ret+='''
-					int __num_row_«call.target.name»_«func_ID»=«(call.input.f_index as VariableLiteral).variable.name».rowCount();
-					int __initial_«call.target.name»_«func_ID»=0;
-					int __num_proc_«call.target.name»_«func_ID» = (int) __fly_environment.get("«cred»").get("nthread");
-					ArrayList<Integer> __splits_«call.target.name»_«func_ID» = new ArrayList<Integer>();
-					for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++) {
-						if(__i<(__num_row_«call.target.name»_«func_ID»%__num_proc_«call.target.name»_«func_ID»)) {
-							__splits_«call.target.name»_«func_ID».add( __initial_«call.target.name»_«func_ID»+((__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»)+1));
-							__initial_«call.target.name»_«func_ID»+=(__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»)+1;
-						}else{
-							__splits_«call.target.name»_«func_ID».add( __initial_«call.target.name»_«func_ID»+((__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»)));
-							__initial_«call.target.name»_«func_ID»+=(__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»);
+				ret += '''
+					int __num_row_«callID» = «callVarName».rowCount();
+					int __initial_«callID» = 0;
+					int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+					ArrayList<Integer> __splits_«callID» = new ArrayList<>();
+
+					for (int __i = 0; __i < __num_proc_«callID»; __i++) {
+						if (__i < (__num_row_«callID» % __num_proc_«callID»)) {
+							__splits_«callID».add( __initial_«callID» + ((__num_row_«callID» / __num_proc_«callID») + 1));
+							__initial_«callID» += (__num_row_«callID» / __num_proc_«callID») + 1;
+						} else {
+							__splits_«callID».add( __initial_«callID» + ((__num_row_«callID» / __num_proc_«callID»)));
+							__initial_«callID»+=(__num_row_«callID» / __num_proc_«callID»);
 						}
 					}
 
-					for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
+					for (int __i = 0; __i < __num_proc_«callID»; __i++) {
 						final int __start;
 						final int __end;
-						if(__i==0) {
-							__start=0;
-						}else{
-							__start=__splits_«call.target.name»_«func_ID».get(__i-1);
+						if (__i == 0) {
+							__start = 0;
+						} else {
+							__start = __splits_«callID».get(__i - 1);
 						}
-						__end = __splits_«call.target.name»_«func_ID».get(__i);
+						__end = __splits_«callID».get(__i);
 						Future<Object> f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								// TODO Auto-generated method stub
-								//creare la stringa
-								String __s_temp= __generateString( «(call.input.f_index as VariableLiteral).variable.name».where(Selection.withRange(__start, __end)),«func_ID»);
+								// creare la stringa
+								String __s_temp = __generateString( «callVarName».where(Selection.withRange(__start, __end)),«funcID»);
 								__lambda_«cred».invoke(new InvokeRequest()
 									.withInvocationType("Event")
 									.withFunctionName("«call.target.name»_"+__id_execution)
-									.withPayload(__s_temp));
+									.withPayload(__s_temp)
+								);
 								return null;
 							}
 						});
-					__sync_list_«call.target.name»_«func_ID».add(f);
+						__sync_list_«callID».add(f);
 					}
 				 '''
-			}else if (
+			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("File")
-			){
-				ret+='''
-					int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«cred»").get("nthread");
-					ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
-					int __temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = 0;
-					Scanner __scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new Scanner(«(call.input.f_index as VariableLiteral).variable.name»);
-					while(__scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».hasNextLine()){
-						String __tmp_line = __scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».nextLine();
-						try{
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
-						}catch(Exception e){
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».add(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»,new StringBuilder());
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
+				typeSystem.get(scope).get(callVarName).equals("File")
+			) {
+				ret += '''
+					int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+					ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
+					int __temp_i_«callVarID» = 0;
+					Scanner __scanner_«callVarID» = new Scanner(«callVarName»);
+
+					while (__scanner_«callVarID».hasNextLine()) {
+						String __tmp_line = __scanner_«callVarID».nextLine();
+						try {
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
+						} catch (Exception e) {
+							__temp_«callVarID».add(__temp_i_«callVarID» % __num_proc_«callID»,new StringBuilder());
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
 						}
-						__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID»++;
+						__temp_i_«callVarID»++;
 					}
-					__scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».close();
-					for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
+					__scanner_«callVarID».close();
+
+					for (int __i =0; __i < __num_proc_«callID»; __i++) {
 						final int __i_f = __i;
 						Future<Object> f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								// TODO Auto-generated method stub
-								//creare la stringa
-								String __s_temp= __generateString(__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i_f).toString(),«func_ID»);
+								// creare la stringa
+								String __s_temp = __generateString(__temp_«callVarID».get(__i_f).toString(), «funcID»);
 								__lambda_«cred».invoke(new InvokeRequest()
 									.withInvocationType("Event")
-									.withFunctionName("«call.target.name»_"+__id_execution)
+									.withFunctionName("«call.target.name»_" + __id_execution)
 									.withPayload(__s_temp));
 								return null;
 							}
 						});
-					__sync_list_«call.target.name»_«func_ID».add(f);
+						__sync_list_«callID».add(f);
 					}
 				'''
-			}else if(
+			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("Directory")
-			){
-				ret+='''
-				int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«cred»").get("nthread");
-				ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
-				int __temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = 0;
-				for(String __tmp_line: «(call.input.f_index as VariableLiteral).variable.name».list()){
-					__tmp_line="http://bucket-"+__id_execution+".s3."+__fly_environment.get("«cred»").get("region")+".amazonaws.com/"+__tmp_line;
-					try{
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
-					}catch(Exception e){
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».add(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»,new StringBuilder());
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
+				typeSystem.get(scope).get(callVarName).equals("Directory")
+			) {
+				ret += '''
+				int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+				ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
+				int __temp_i_«callVarID» = 0;
+
+				for (String __tmp_line: «callVarName».list()) {
+					__tmp_line = "http://bucket-" + __id_execution + ".s3." + __fly_environment.get("«cred»").get("region") + ".amazonaws.com/" + __tmp_line;
+					try {
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
+					} catch (Exception e) {
+						__temp_«callVarID».add(__temp_i_«callVarID» % __num_proc_«callID», new StringBuilder());
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
 					}
-					__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID»++;
+					__temp_i_«callVarID»++;
 				}
-				for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
+
+				for (int __i = 0; __i < __num_proc_«callID»; __i++) {
 					final int __i_f = __i;
 					Future<Object> f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 						@Override
 						public Object call() throws Exception {
-							// TODO Auto-generated method stub
-							//creare la stringa
-							String __s_temp= __generateString(__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i_f).toString(),«func_ID»);
+							// creare la stringa
+							String __s_temp = __generateString(__temp_«callVarID».get(__i_f).toString(),«funcID»);
 							__lambda_«cred».invoke(new InvokeRequest()
 								.withInvocationType("Event")
-								.withFunctionName("«call.target.name»_"+__id_execution)
+								.withFunctionName("«call.target.name»_" + __id_execution)
 								.withPayload(__s_temp));
 							return null;
 						}
 					});
-				__sync_list_«call.target.name»_«func_ID».add(f);
+					__sync_list_«callID».add(f);
 				}
 				'''
-			}else if (
+			} else if ( // FIXME edit according to IndexObject items refactoring?
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).contains("Array")
-			){
-				ret+='''
-					int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«cred»").get("nthread");
-					ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
+				typeSystem.get(scope).get(callVarName).contains("Array")
+			) {
+				ret += '''
+					int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+					ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
 				'''
-			}else if (
+			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).contains("Matrix")
-			){
-				if(call.input.split.equals("row")){ //row
-					ret+='''
-						int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«cred»").get("nthread");
-						ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
-						int __current_row_«(call.input.f_index as VariableLiteral).variable.name» = 0;
-						int __rows = «(call.input.f_index as VariableLiteral).variable.name».length;
-						for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
-							int __n_rows =  __rows/__num_proc_«call.target.name»_«func_ID»;
-							if(__rows%__num_proc_«call.target.name»_«func_ID» !=0 && __i< __rows%__num_proc_«call.target.name»_«func_ID» ){
+				typeSystem.get(scope).get(callVarName).contains("Matrix")
+			) {
+				if (call.input.split.equals("row")) { // row
+					ret += '''
+						int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+						ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
+						int __current_row_«callVarName» = 0;
+						int __rows = «callVarName».length;
+						for (int __i = 0; __i < __num_proc_«callID»; __i++) {
+							int __n_rows =  __rows / __num_proc_«callID»;
+							if (__rows % __num_proc_«callID» != 0 && __i < __rows%__num_proc_«callID») {
 								__n_rows++;
 							}
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».add(__i,new StringBuilder());
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).append("{\"rows\":"+__n_rows+",\"cols\":"+«(call.input.f_index as VariableLiteral).variable.name»[0].length+",\"values\":[");
-							for(int __j=__current_row_«(call.input.f_index as VariableLiteral).variable.name»; __j<__current_row_«(call.input.f_index as VariableLiteral).variable.name»+__n_rows;__j++){
-								for(int __z = 0; __z<«(call.input.f_index as VariableLiteral).variable.name»[__j].length;__z++){
-									__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).append("{\"x\":"+__j+",\"y\":"+__z+",\"value\":"+«(call.input.f_index as VariableLiteral).variable.name»[__j][__z]+"},");
+							__temp_«callVarID».add(__i,new StringBuilder());
+							__temp_«callVarID».get(__i).append(
+								"{" +
+									"\"rows\": " + __n_rows + "," +
+									"\"cols\": " + «callVarName»[0].length + "," +
+									"\"values\": ["
+							);
+							for (int __j = __current_row_«callVarName»; __j < __current_row_«callVarName»+__n_rows; __j++) {
+								for (int __z = 0; __z < «callVarName»[__j].length; __z++) {
+									__temp_«callVarID».get(__i).append(
+										"{" +
+											"\"x\": " + __j + "," +
+											"\"y\": " + __z + "," +
+											"\"value\": " + «callVarName»[__j][__z] +
+										"},"
+									);
 								}
-								if(__j == __current_row_«(call.input.f_index as VariableLiteral).variable.name» + __n_rows-1) {
-									__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).deleteCharAt(__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).length()-1);
-									__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i).append("]}");
+								if (__j == __current_row_«callVarName» + __n_rows - 1) {
+									__temp_«callVarID».get(__i).deleteCharAt(__temp_«callVarID».get(__i).length() - 1);
+									__temp_«callVarID».get(__i).append("]}");
 								}
 							}
-							__current_row_«(call.input.f_index as VariableLiteral).variable.name»+=__n_rows;
+							__current_row_«callVarName» += __n_rows;
 						}
-						for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
-								final int __i_f = __i;
-								Future<Object> f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
-									@Override
-									public Object call() throws Exception {
-										// TODO Auto-generated method stub
-										//creare la stringa
-										String __s_temp= __generateString(__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i_f).toString(),«func_ID»);
-										__lambda_«cred».invoke(new InvokeRequest()
-											.withInvocationType("Event")
-											.withFunctionName("«call.target.name»_"+__id_execution)
-											.withPayload(__s_temp));
-										return null;
-									}
-								});
-							__sync_list_«call.target.name»_«func_ID».add(f);
-							}
+						for (int __i = 0; __i < __num_proc_«callID»; __i++) {
+							final int __i_f = __i;
+«««							anonymous Callable<Object> instance as lambda expression
+							Future<Object> f = __thread_pool_«call.environment.name».submit(() -> {
+								// creare la stringa
+								String __s_temp= __generateString(__temp_«callVarID».get(__i_f).toString(), «funcID»);
+								__lambda_«cred».invoke(new InvokeRequest()
+									.withInvocationType("Event")
+									.withFunctionName("«call.target.name»_" + __id_execution)
+									.withPayload(__s_temp));
+								return null;
+							});
+							__sync_list_«callID».add(f);
+						}
 					'''
-				}else if(call.input.split.equals("col")){ //col
-					ret+='''
-						int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«cred»").get("nthread");
-						ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
+				} else if (call.input.split.equals("col")) { //col
+					ret += '''
+						int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+						ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
 
 					'''
-				}else{ //square TODO: implement square partition
-					
+				} else { // square TODO: implement square partition
+					ret += '''
+						int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+					'''
 				}
 			}
+		} else { // is not a for index TODO check
+			ret += '''
+				int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+			'''
 		}
 
-		ret+='''
-			for (Future<Object> f: __sync_list_«call.target.name»_«func_ID»){
+		ret += '''
+			for (Future<Object> f: __sync_list_«callID») {
 				try {
 					f.get();
 				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (ExecutionException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}
 		'''
 
-		if(!async){
-			ret+='''
-			int __messagges_«call.target.name»_«func_ID» = 0;
-			while(__messagges_«call.target.name»_«func_ID»!=__num_proc_«call.target.name»_«func_ID») {
+		if (!async) {
+			ret += '''
+			int __messages_«callID» = 0;
+			while (__messages_«callID» != __num_proc_«callID») {
 				__termination_«call.target.name»_ch.poll();
-				__messagges_«call.target.name»_«func_ID»++;
+				__messages_«callID»++;
 			}
-			__wait_on_termination_«call.target.name»=false;
+			__wait_on_termination_«call.target.name» = false;
 			'''
 		}
+
 		// manage the callback
 		if (call.isIs_thenall) {
-			ret +='''
+			ret += '''
 				«call.thenall.name»();
 			'''
 		}
-		func_ID++
+
+		funcID++
+
 		return ret
 	}
 
@@ -2567,228 +2752,231 @@ class FLYGenerator extends AbstractGenerator {
 		// generate the aws lambda function
 		var async = call.isIsAsync
 		var cred = call.environment.name
-		var region = ((call.environment.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
+//		var region = ((call.environment.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s
 		var function = call.target.name
+		val callID = '''«function»_«funcID»'''
 		var ret = ''''''
 		if (call.input.isIs_for_index) {
 
-			//create the termination SQS queue
-			ret+='''
-				«cred».createQueue("termination-«call.target.name»-"+__id_execution+"-«func_ID»");
-				ArrayList<Future<Object>> __sync_list_«call.target.name»_«func_ID» = new ArrayList<Future<Object>>();
+			// create the termination SQS queue
+			ret += '''
+				«cred».createQueue("termination-«call.target.name»-" + __id_execution + "-«funcID»");
+				ArrayList<Future<Object>> __sync_list_«callID» = new ArrayList<>();
 			'''
 
+			val callVarName = if (call.input.f_index instanceof VariableLiteral)
+				(call.input.f_index as VariableLiteral).variable.name
+			val callVarID = if (callVarName !== null)
+				'''«callVarName»_«funcID»'''
+
 			if (call.input.f_index instanceof RangeLiteral) {
+				val rLeft = (call.input.f_index as RangeLiteral).value1
+				val rRight = (call.input.f_index as RangeLiteral).value2
 				ret += '''
-					int __num_proc_«call.target.name»_«func_ID» = «(call.input.f_index as RangeLiteral).value2 - (call.input.f_index as RangeLiteral).value1 » ;
-					for(int ___i=«(call.input.f_index as RangeLiteral).value1»;___i<«(call.input.f_index as RangeLiteral).value2»;___i++){
-						final String __s_temp = "{\"id\": «func_ID»,\"data\":"+String.valueOf(___i)+"}";
+					int __num_proc_«callID» = «rRight» - «rLeft»;
+					for (int ___i = «rLeft»; ___i < «rRight»; ___i++) {
+						final String __s_temp = "{\"id\": «funcID», \"data\": " + String.valueOf(___i) + "}";
 						Future<Object> f = __thread_pool_«cred».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								// TODO Auto-generated method stub
-								«cred».invokeFunction("«call.target.name»",__s_temp);
+								«cred».invokeFunction("«call.target.name»", __s_temp);
 								return null;
 							}
 						});
-					__sync_list_«call.target.name»_«func_ID».add(f);
+					__sync_list_«callID».add(f);
 					}
 				'''
 			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("Table")
+				typeSystem.get(scope).get(callVarName).equals("Table")
 			) {
-				ret+='''
-					int __num_row_«call.target.name»_«func_ID»=«(call.input.f_index as VariableLiteral).variable.name».rowCount();
-					int __initial_«call.target.name»_«func_ID»=0;
-					int __num_proc_«call.target.name»_«func_ID» = (int) __fly_environment.get("«cred»").get("nthread");
-					ArrayList<Integer> __splits_«call.target.name»_«func_ID» = new ArrayList<Integer>();
-					for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++) {
-						if(__i<(__num_row_«call.target.name»_«func_ID»%__num_proc_«call.target.name»_«func_ID»)) {
-							__splits_«call.target.name»_«func_ID».add( __initial_«call.target.name»_«func_ID»+((__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»)+1));
-							__initial_«call.target.name»_«func_ID»+=(__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»)+1;
-						}else{
-							__splits_«call.target.name»_«func_ID».add( __initial_«call.target.name»_«func_ID»+((__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»)));
-							__initial_«call.target.name»_«func_ID»+=(__num_row_«call.target.name»_«func_ID»/__num_proc_«call.target.name»_«func_ID»);
+				ret += '''
+					int __num_row_«callID» = «callVarName».rowCount();
+					int __initial_«callID» = 0;
+					int __num_proc_«callID» = (int) __fly_environment.get("«cred»").get("nthread");
+					ArrayList<Integer> __splits_«callID» = new ArrayList<>();
+					for (int __i = 0; __i < __num_proc_«callID»; __i++) {
+						if (__i < (__num_row_«callID» % __num_proc_«callID»)) {
+							__splits_«callID».add(__initial_«callID» + ((__num_row_«callID» / __num_proc_«callID») + 1));
+							__initial_«callID» += (__num_row_«callID» / __num_proc_«callID») + 1;
+						} else {
+							__splits_«callID».add(__initial_«callID» + ((__num_row_«callID» / __num_proc_«callID»)));
+							__initial_«callID»+=(__num_row_«callID» / __num_proc_«callID»);
 						}
 					}
 
-					for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
+					for (int __i = 0; __i < __num_proc_«callID»; __i++) {
 						final int __start;
 						final int __end;
-						if(__i==0) {
-							__start=0;
-						}else{
-							__start=__splits_«call.target.name»_«func_ID».get(__i-1);
+						if (__i == 0) {
+							__start = 0;
+						} else {
+							__start = __splits_«callID».get(__i - 1);
 						}
-						__end = __splits_«call.target.name»_«func_ID».get(__i);
+						__end = __splits_«callID».get(__i);
 						Future<Object> f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								// TODO Auto-generated method stub
-								//creare la stringa
-								String __s_temp= __generateString( «(call.input.f_index as VariableLiteral).variable.name».where(Selection.withRange(__start, __end)),«func_ID»);
-								«cred».invokeFunction("«call.target.name»",__s_temp);
+								// creare la stringa
+								String __s_temp = __generateString( «callVarName».where(Selection.withRange(__start, __end)), «funcID»);
+								«cred».invokeFunction("«call.target.name»", __s_temp);
 								return null;
 							}
 						});
-					__sync_list_«call.target.name»_«func_ID».add(f);
+					__sync_list_«callID».add(f);
 					}
 				 '''
-			}else if (
+			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("File")
-			){
-				ret+='''
-					int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«cred»").get("nthread");
-					ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
-					int __temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = 0;
-					Scanner __scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new Scanner(«(call.input.f_index as VariableLiteral).variable.name»);
-					while(__scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».hasNextLine()){
-						String __tmp_line = __scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».nextLine();
-						try{
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
-						}catch(Exception e){
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».add(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»,new StringBuilder());
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-							__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
+				typeSystem.get(scope).get(callVarName).equals("File")
+			) {
+				ret += '''
+					int __num_proc_«callID»= (int) __fly_environment.get("«cred»").get("nthread");
+					ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
+					int __temp_i_«callVarID» = 0;
+					Scanner __scanner_«callVarID» = new Scanner(«callVarName»);
+					while (__scanner_«callVarID».hasNextLine()) {
+						String __tmp_line = __scanner_«callVarID».nextLine();
+						try {
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
+						} catch (Exception e) {
+							__temp_«callVarID».add(__temp_i_«callVarID» % __num_proc_«callID»,new StringBuilder());
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+							__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
 						}
-						__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID»++;
+						__temp_i_«callVarID»++;
 					}
-					__scanner_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».close();
-					for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
+					__scanner_«callVarID».close();
+					for (int __i = 0;__i < __num_proc_«callID»; __i++) {
 						final int __i_f = __i;
 						Future<Object> f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 							@Override
 							public Object call() throws Exception {
-								// TODO Auto-generated method stub
-								//creare la stringa
-								String __s_temp= __generateString(__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i_f).toString(),«func_ID»);
+								// creare la stringa
+								String __s_temp = __generateString(__temp_«callVarID».get(__i_f).toString(), «funcID»);
 								«cred».invokeFunction("«call.target.name»",__s_temp);
 								return null;
 							}
 						});
-					__sync_list_«call.target.name»_«func_ID».add(f);
+					__sync_list_«callID».add(f);
 					}
 				'''
-			}else if(
+			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("Directory")
-			){
-				ret+='''
-				int __num_proc_«call.target.name»_«func_ID»= (int) __fly_environment.get("«cred»").get("nthread");
-				ArrayList<StringBuilder> __temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = new ArrayList<StringBuilder>();
-				int __temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» = 0;
-				for(String __tmp_line: «(call.input.f_index as VariableLiteral).variable.name».list()){
+				typeSystem.get(scope).get(callVarName).equals("Directory")
+			) {
+				ret += '''
+				int __num_proc_«callID»= (int) __fly_environment.get("«cred»").get("nthread");
+				ArrayList<StringBuilder> __temp_«callVarID» = new ArrayList<>();
+				int __temp_i_«callVarID» = 0;
+				for (String __tmp_line: «callVarName».list()) {
 					//__tmp_line="https://flysa+"+__id_execution+".blob.core.windows.net/bucket-"+__id_execution+"/"+__tmp_line;
-					try{
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
-					}catch(Exception e){
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».add(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»,new StringBuilder());
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append(__tmp_line);
-						__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID» % __num_proc_«call.target.name»_«func_ID»).append("\n");
+					try {
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
+					} catch (Exception e) {
+						__temp_«callVarID».add(__temp_i_«callVarID» % __num_proc_«callID», new StringBuilder());
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append(__tmp_line);
+						__temp_«callVarID».get(__temp_i_«callVarID» % __num_proc_«callID»).append("\n");
 					}
-					__temp_i_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID»++;
+					__temp_i_«callVarID»++;
 				}
-				for(int __i=0;__i<__num_proc_«call.target.name»_«func_ID»;__i++){
+				for (int __i = 0; __i < __num_proc_«callID»; __i++) {
 					final int __i_f = __i;
 					Future<Object> f = __thread_pool_«call.environment.name».submit(new Callable<Object>() {
 						@Override
 						public Object call() throws Exception {
-							String __s_temp= __generateString(__temp_«(call.input.f_index as VariableLiteral).variable.name»_«func_ID».get(__i_f).toString(),«func_ID»);
-							«cred».invokeFunction("«call.target.name»",__s_temp);
+							String __s_temp = __generateString(__temp_«callVarID».get(__i_f).toString(), «funcID»);
+							«cred».invokeFunction("«call.target.name»", __s_temp);
 							return null;
 						}
 					});
-				__sync_list_«call.target.name»_«func_ID».add(f);
+				__sync_list_«callID».add(f);
 				}
 				'''
-			}else if(
+			} else if ( // FIXME edit according to IndexObject items refactoring?
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("Array")
-			){
+				typeSystem.get(scope).get(callVarName).equals("Array")
+			) {
 				
-			}else if(
+			} else if (
 				call.input.f_index instanceof VariableLiteral &&
-				typeSystem.get(scope).get((call.input.f_index as VariableLiteral).variable.name).equals("Matrix")
-			){
+				typeSystem.get(scope).get(callVarName).equals("Matrix")
+			) {
 				
 			}
 		}
 
-		ret+='''
-			for (Future<Object> f: __sync_list_«call.target.name»_«func_ID»){
+		ret += '''
+			for (Future<Object> f: __sync_list_«callID») {
 				try {
 					f.get();
 				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				} catch (ExecutionException e) {
-					// TODO Auto-generated catch block
 					e.printStackTrace();
 				}
 			}'''
 
-		if(!async){
-			ret+='''
-			int __messagges_«call.target.name»_«func_ID» = 0;
-			while(__messagges_«call.target.name»_«func_ID»!=__num_proc_«call.target.name»_«func_ID») {
-				__termination_«call.target.name»_ch.poll();
-				__messagges_«call.target.name»_«func_ID»++;
-			}
-			__wait_on_termination_«call.target.name»=false;
+		if (!async) {
+			ret += '''
+				int __messagges_«callID» = 0;
+				while (__messagges_«callID» != __num_proc_«callID») {
+					__termination_«call.target.name»_ch.poll();
+					__messagges_«callID»++;
+				}
+				__wait_on_termination_«call.target.name» = false;
 			'''
 		}
+
 		// manage the callback
 		if (call.isIs_thenall) {
-			ret +='''
+			ret += '''
 				«call.thenall.name»();
 			'''
 		}
-		func_ID++
+
+		funcID++
+
 		return ret
 	}
 
 	def generateChannelReceive(ChannelReceive receive, String scope) {
-		return '''
-			«(receive.target as VariableDeclaration).name».take()'''
-//		var env = (((receive.target.environment.right as DeclarationObject).features.get(0)) as DeclarationFeature).
-//			value_s
-//		if (env.equals("smp")) {
-//			return '''«(receive.target as VariableDeclaration).name».take()'''
-//		} else if (env.equals("aws")) {
-//			return '''
-//			«(receive.target as VariableDeclaration).name».take()'''
-//		}
+		val chanName = receive.target.name
+
+		return '''«chanName».take()'''
 	}
 
 	def generateChannelSend(ChannelSend send, String scope) {
 		var env = (((send.target.environment.get(0).right as DeclarationObject).features.get(0)) as DeclarationFeature).value_s
-		var env_name = send.target.environment.get(0).name
+		var envName = send.target.environment.get(0).name
+		val chanName = send.target.name
+		val aExp = generateArithmeticExpression(send.expression,scope)
+
 		switch env {
 			case "smp":
-				return '''«(send.target as VariableDeclaration).name».add(«generateArithmeticExpression(send.expression,scope)»)'''
-			case "aws":
-				return '''__sqs_«env_name».sendMessage(new SendMessageRequest(__sqs_«env_name».getQueueUrl("«send.target.name»-"+__id_execution).getQueueUrl(), String.valueOf(«generateArithmeticExpression(send.expression,scope)»)));'''
+				return '''«chanName».add(«aExp»)'''
+			case "aws",
 			case "aws-debug":
-				return '''__sqs_«env_name».sendMessage(new SendMessageRequest(__sqs_«env_name».getQueueUrl("«send.target.name»-"+__id_execution).getQueueUrl(), String.valueOf(«generateArithmeticExpression(send.expression,scope)»)));'''
+				return '''__sqs_«envName».sendMessage(new SendMessageRequest(__sqs_«envName».getQueueUrl("«chanName»-" + __id_execution).getQueueUrl(), String.valueOf(«aExp»)));'''
 			case "azure":
-				return '''«env_name».addToQueue("«send.target.name»-"+__id_execution,String.valueOf(«generateArithmeticExpression(send.expression,scope)»))'''
+				return '''«envName».addToQueue("«chanName»-" + __id_execution, String.valueOf(«aExp»))'''
 		}
 	}
 
-	def generateWhileExpression(WhileExpression expression, String scope) {
-		'''
-			while(«generateArithmeticExpression(expression.cond,scope)»)
-				«generateExpression(expression.body,scope)»
-		'''
-	}
+	def generateWhileExpression(WhileExpression expression, String scope) '''
+		while («generateArithmeticExpression(expression.cond, scope)»)«IF expression.body instanceof BlockExpression»
+		«generateBlockExpression(expression.body as BlockExpression, scope, isLocal)»
+		«ELSE» «generateExpression(expression.body, scope, isLocal)»
+
+		«ENDIF»
+	'''
 
 	def generateForExpression(ForExpression exp, String scope) {
 		if (exp.object instanceof ParenthesizedExpression) {
-			return generateFor(exp.index, (exp.object as ParenthesizedExpression).expression, exp.body, scope)
+			val parExp = (exp.object as ParenthesizedExpression).expression
+			return generateFor(exp.index, parExp, exp.body, scope)
 		} else {
 			return generateFor(exp.index, exp.object, exp.body, scope)
 		}
@@ -2796,123 +2984,159 @@ class FLYGenerator extends AbstractGenerator {
 
 	def generateFor(ForIndex indexes, ArithmeticExpression object, Expression body, String scope) {
 		(indexes.indices.get(0) as VariableDeclaration).typeobject = 'var'
+		val indexName = (indexes.indices.get(0) as VariableDeclaration).name
 		if (object instanceof CastExpression) {
-			if ((object as CastExpression).type.equals("Dat")) { // dat
-				var name = ((object as CastExpression).target as VariableLiteral).variable.name
-				if (indexes.indices.length == 1 ){
-					typeSystem.get(scope).put((indexes.indices.get(0) as VariableDeclaration).name,name);
+			val castedVarName = (object.target as VariableLiteral).variable.name
+//			println('''Looping over «castedVarName» casted «object.type»''')
+			if (object.type.equals("Dat")) { // dat
+				if (indexes.indices.length == 1 ) {
+					typeSystem.get(scope).put(indexName, castedVarName)
+
 					return '''
-						for(int _«name»=0; _«name»<((Table) «name»).rowCount();_«name»++){
-							«generateForBodyExpression(body, scope)»
-						}
+						for (int _«castedVarName» = 0; _«castedVarName» < ((Table) «castedVarName»).rowCount(); _«castedVarName»++)
+						«generateForBodyExpression(body, scope, isLocal)»
 					'''
 				}
-			} else if ((object as CastExpression).type.equals("Object")) { // object
-				if(indexes.indices.length==1){
+			} else if (object.type.equals("Object")) { // object
+				if (indexes.indices.length == 1) {
 					return '''
-					for(Object _«(indexes.indices.get(0) as VariableDeclaration).name» : ( (HashMap<Object,Object>) «((object as CastExpression).target as VariableLiteral).variable.name»).keySet() ){
-							HashMap<Object, Object> «(indexes.indices.get(0) as VariableDeclaration).name» = new HashMap<Object,Object>();
-							«(indexes.indices.get(0) as VariableDeclaration).name».put("k",_«(indexes.indices.get(0) as VariableDeclaration).name»);
-							«(indexes.indices.get(0) as VariableDeclaration).name».put("v",((HashMap<Object,Object>) «((object as CastExpression).target as VariableLiteral).variable.name»).get(_«(indexes.indices.get(0) as VariableDeclaration).name»));
-						«generateForBodyExpression(body, scope)»
+					for (Object _«indexName»: ((HashMap<Object, Object>) «castedVarName»).keySet()) {
+						HashMap<Object, Object> «indexName» = new HashMap<>();
+						«indexName».put("k", _«indexName»);
+						«indexName».put("v", ((HashMap<Object, Object>) «castedVarName»).get(_«indexName»));
+						«generateForBodyExpression(body, scope, isLocal)»
 					}
 				'''
 				}
+			} else { // TODO check
+//				println('''Generating default loop over «castedVarName» expression casted «object.type»''')
+
+				return '''
+					for («object.type» «indexName»: («object.type»[]) «castedVarName»)
+					«generateForBodyExpression(body, scope, isLocal)»
+				'''
 			}
 		} else if (object instanceof RangeLiteral) {
-			var value1 = if (object.value_l1 != null) object.value_l1.name  else  object.value1  ;
-			var value2 = if (object.value_l2 != null) object.value_l2.name  else  object.value2  ;
+//			println('''Type of «indexName» is «typeSystem.get(scope).get(indexName)»''')
+//			println('''Content of «indexName» is «(indexes.indices.get(0) as VariableDeclaration).right»''')
+			typeSystem.get(scope).put(indexName, "Integer")
+			val rLeft = if (object.value_l1 !== null) object.value_l1.name else object.value1;
+			val rRight = if (object.value_l2 !== null) object.value_l2.name else object.value2;
+
 			return '''
-				for(int «(indexes.indices.get(0) as VariableDeclaration).name»=«value1»;«(indexes.indices.get(0) as VariableDeclaration).name»<«value2»;«(indexes.indices.get(0) as VariableDeclaration).name»++){
-					«generateExpression(body,scope)»
-				}
+				for (int «indexName» = «rLeft»; «indexName» < «rRight»; «indexName»++)
+				«generateForBodyExpression(body, scope, isLocal)»
 			'''
 		} else if (object instanceof VariableLiteral) {
-//			println("Iterating over " + (object as VariableLiteral).variable.name + " of type " + (object as VariableLiteral).variable.typeobject)
-//			println("Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " of type " + (indexes.indices.get(0) as VariableDeclaration).typeobject)
-			if (typeSystem.get(scope).get((object as VariableLiteral).variable.name) == null) {
-				println("BEWARE! Variable " + (object as VariableLiteral).variable.name + " type is 'null'! Setting 'Object'...")
-				typeSystem.get(scope).put((object as VariableLiteral).variable.name, "Object")
+			val variableLiteral = object as VariableLiteral
+			val variableName = variableLiteral.variable.name
+			val variableType = if (typeSystem.get(scope).get(variableName) === null) {
+				println('''BEWARE! Variable '«variableName»' type is 'null'!''')
+				val type = valuateArithmeticExpression(object, scope)
+				typeSystem.get(scope).put(variableName, type)
+				println('''WARNING! Found type for «variableName» is «type»!''')
+
+				type
+			} else {
+				typeSystem.get(scope).get(variableName)
 			}
-			if (typeSystem.get(scope).get((indexes.indices.get(0) as VariableDeclaration).name) == null) {
-				println("BEWARE! Iteration variable " + (indexes.indices.get(0) as VariableDeclaration).name + " type is 'null'! Setting 'Object'...")
-				typeSystem.get(scope).put((object as VariableLiteral).variable.name, "Object")
-			}
-			if ((((object as VariableLiteral).variable.typeobject.equals('var') &&
-				((object as VariableLiteral).variable.right instanceof NameObjectDef) ) ||
-				typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("HashMap"))) {
+			val index = indexes.indices.get(0) as VariableDeclaration
+			var indexType = ""
+//			println('''Iterating over '«variableLiteral.variable.typeobject» «variableName»' of type '«variableType»' ''')
+//			println('''Iteration variable '«index.typeobject» «indexName»' ''')
+
+			if (
+					(
+						variableLiteral.variable.typeobject.equals('var') &&
+						variableLiteral.variable.right instanceof NameObjectDef
+					) ||
+					variableType.equals("HashMap")
+			) {
 				return '''
-					for(Object _«(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name».keySet() ){
-						HashMap<Object, Object> «(indexes.indices.get(0) as VariableDeclaration).name» = new HashMap<Object,Object>();
-						«(indexes.indices.get(0) as VariableDeclaration).name».put("k",_«(indexes.indices.get(0) as VariableDeclaration).name»);
-						«(indexes.indices.get(0) as VariableDeclaration).name».put("v",«(object as VariableLiteral).variable.name».get(_«(indexes.indices.get(0) as VariableDeclaration).name»));
-						«generateForBodyExpression(body, scope)»
+					for (Object _«indexName»: «variableName».keySet()) {
+						HashMap<Object, Object> «indexName» = new HashMap<>();
+						«indexName».put("k", _«indexName»);
+						«indexName».put("v", «variableName».get(_«indexName»));
+						«generateForBodyExpression(body, scope, isLocal)»
 					}
 				'''
-			} else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("File")){
-				var name = (object as VariableLiteral).variable.name;
-				(indexes.indices.get(0) as VariableDeclaration).typeobject='var'
-				var index_name = (indexes.indices.get(0) as VariableDeclaration).name
-				typeSystem.get(scope).put(index_name,name);
-					return '''
-						Scanner __scanner_«name» = new Scanner(«name»);
-						while(__scanner_«name».hasNextLine()){
-							String «index_name» = __scanner_«name».nextLine();
-							«generateForBodyExpression(body, scope)»
-						}
-						__scanner_«name».close();
-					'''
-			}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("Directory")){ //TO-DO: add support directory
+			} else if (variableType.equals("File")) {
+				index.typeobject = 'var'
+				typeSystem.get(scope).put(indexName, variableName)
+
 				return '''
-					for (String __«(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name».list()) {
-						String «(indexes.indices.get(0) as VariableDeclaration).name» = «(object as VariableLiteral).variable.name».getAbsolutePath()+"/"+ __«(indexes.indices.get(0) as VariableDeclaration).name»;
-						«generateForBodyExpression(body, scope)»
+					Scanner __scanner_«variableName» = new Scanner(«variableName»);
+					while (__scanner_«variableName».hasNextLine()) {
+						String «indexName» = __scanner_«variableName».nextLine();
+						«generateForBodyExpression(body, scope, isLocal)»
+					}
+					__scanner_«variableName».close();
+				'''
+			} else if (variableType.equals("Directory")) { // TODO add support directory
+				return '''
+					for (String __«indexName»: «variableName».list()) {
+						String «indexName» = «variableName».getAbsolutePath() + "/" + __«indexName»;
+						«generateForBodyExpression(body, scope, isLocal)»
 					}
 				'''
-			}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("[]")){
+			} else if (variableType.equals("Table")) {
+				typeSystem.get(scope).put(indexName, variableName)
+
 				return '''
-					for (Object «(indexes.indices.get(0) as VariableDeclaration).name» : «(object as VariableLiteral).variable.name») {
-						«generateForBodyExpression(body, scope)»
-					}
+					for (int _«variableName» = 0; _«variableName» < «variableName».rowCount(); _«variableName»++)
+					«generateForBodyExpression(body, scope, isLocal)»
 				'''
-			}else if (typeSystem.get(scope).get((object as VariableLiteral).variable.name).equals("Table")){
-				var name = (object as VariableLiteral).variable.name;
-				var index_name = (indexes.indices.get(0) as VariableDeclaration).name
-				typeSystem.get(scope).put(index_name,name);
-				return '''
-					for(int _«name»=0; _«name»< «name».rowCount();_«name»++){
-						«generateForBodyExpression(body, scope)»
+			} else if (variableType.endsWith("[]")) { // TODO check indexobject looping correctness
+//				print('''Iterating over «variableName», ''')
+				indexType = variableType.split('\\[\\]').get(0)
+				val dims = indexObjectNumDims(variableType)
+//				println('''a «dims»-dimension array typed «variableType»''')
+
+				switch dims {
+					case 1: {
+						typeSystem.get(scope).put(indexName, indexType)
+
+						return '''
+							for («indexType» «indexName»: «variableName»)
+							«generateForBodyExpression(body, scope, isLocal)»
+						'''
 					}
-				'''
-			} else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("Array")){
-				
-			}else if(typeSystem.get(scope).get((object as VariableLiteral).variable.name).contains("Matrix")){
-				var name = (object as VariableLiteral).variable.name;
-				var index_row = (indexes.indices.get(0) as VariableDeclaration).name
-				var index_col = (indexes.indices.get(1) as VariableDeclaration).name
-				typeSystem.get(scope).put(index_col,name);
-				typeSystem.get(scope).put(index_row,name);
-				return  '''
-				for(int «index_row»=0;«index_row»<«name».length;«index_row»++){
-					for(int «index_col»=0;«index_col»<«name»[0].length;«index_col»++){
-						«generateForBodyExpression(body, scope)»
+
+					case 2,
+					case 3: {
+						var indexRow = index.name
+						var indexCol = (indexes.indices.get(1) as VariableDeclaration).name
+						typeSystem.get(scope).put(indexCol, variableName);
+						typeSystem.get(scope).put(indexRow, variableName);
+
+						return '''
+						for (int «indexRow» = 0; «indexRow» < «variableName».length; «indexRow»++)
+							for (int «indexCol» = 0; «indexCol» < «variableName»[0].length; «indexCol»++)
+							«generateForBodyExpression(body, scope, isLocal)»
+						'''
+					}
+
+					default: {
+						println('''«dims» is not a supported dimension''')
+
+						return ''''''
 					}
 				}
-				'''
 			} else {
-				println("'" + typeSystem.get(scope).get((object as VariableLiteral).variable.name) + "' is not a feasible type!")
+				println('''«variableType» is not a feasible type or empty!''')
+				''''''
 			}
 		} else if (object instanceof VariableFunction) { // di che tipo è il target della variable function
 			val function = object as VariableFunction
 			val targetType = typeSystem.get(scope).get(function.target.name)
-			val targetTypeObject = function.target.typeobject
+//			val targetTypeObject = function.target.typeobject
 //			println("Target is '" + function.target.name + "', Java type " + targetType + ", typeobject " + targetTypeObject)
 			if (targetType.contains("Graph")) {
 				// considerare il tipo di ritorno dalla funzione
 				// in base al tipo di ritorno costruisci l'intestazione del
 				// ciclo for che itera sul giusto tipo di dati
 				val feature = function.feature
-				val indexVarName = (indexes.indices.get(0) as VariableDeclaration).name
+				val indexVarName = indexName
 //				val indexVarType = (indexes.indices.get(0) as VariableDeclaration).typeobject
 				var indexJType = ""
 //				println("Loop variable '" + indexVarName + "' of type " + indexVarType)
@@ -2929,21 +3153,22 @@ class FLYGenerator extends AbstractGenerator {
 						indexJType = "Object[]"
 						typeSystem.get(scope).put(indexVarName, indexJType)
 						var ts = System.currentTimeMillis
+
 						return '''
 						Object[] comps_«ts» = «generateVariableFunction(function, false, scope)»;
 						for (int pos = 0; pos < comps_«ts».length; pos++) {
 							«indexJType» «indexVarName» = («indexJType») comps_«ts»[pos];
-							«generateForBodyExpression(body, scope)»
+							«generateForBodyExpression(body, scope, isLocal)»
 						}
 						'''
 					} else {
 //						println("...")
 						indexJType = "Object"
 						typeSystem.get(scope).put(indexVarName, indexJType)
+
 						return '''
-						for («indexJType» «indexVarName»: «generateVariableFunction(function, false, scope)») {
-							«generateForBodyExpression(body, scope)»
-						}
+						for («indexJType» «indexVarName»: «generateVariableFunction(function, false, scope)»)
+						«generateForBodyExpression(body, scope, isLocal)»
 						'''
 					}
 				} else if ( // methods returning Graph[]
@@ -2952,10 +3177,10 @@ class FLYGenerator extends AbstractGenerator {
 //					println(" returning 'Graph[]'...")
 					indexJType = "Graph"
 					typeSystem.get(scope).put(indexVarName, indexJType)
+
 					return '''
-					for («indexJType» «indexVarName»: «generateVariableFunction(function, false, scope)») {
-						«generateForBodyExpression(body, scope)»
-					}
+					for («indexJType» «indexVarName»: «generateVariableFunction(function, false, scope)»)
+					«generateForBodyExpression(body, scope, isLocal)»
 					'''
 				} else { // else lascio quello che ci sta
 //					println(" returning what?")
@@ -2965,285 +3190,377 @@ class FLYGenerator extends AbstractGenerator {
 
 			return '''
 				«generateVariableFunction(function, false, scope)»
-				for(HashMap<String,Object> «(indexes.indices.get(0) as VariableDeclaration).name» : __«function.target.name»_rows.values()){
-					«generateForBodyExpression(body, scope)»
-				}
+				for (HashMap<String, Object> «indexName»: __«function.target.name»_rows.values())
+				«generateForBodyExpression(body, scope, isLocal)»
 			'''
-		} else if(object instanceof IndexObject){ // if  it's a sub-array or a sub-matrix
+		} else if (object instanceof IndexObject) { // if it's a sub-array or a sub-matrix
 			
 		}
 	}
 
-	// TODO test
-	def generateForBodyExpression(Expression body, String scope) '''
-		«IF body instanceof BlockExpression»
-			«generateBlockExpression(body, scope)»
-		«ELSE»
-			«generateExpression(body, scope)»
+	def generateIfExpression(IfExpression expression, String scope) '''
+		if («generateArithmeticExpression(expression.cond, scope)»)
+			«generateExpression(expression.then, scope, isLocal)»
+		«IF expression.^else !== null»
+			else «generateExpression(expression.^else, scope, isLocal)»
 		«ENDIF»
 	'''
 
-	def generateIfExpression(IfExpression expression, String scope) {
-		'''
-			if(«generateArithmeticExpression(expression.cond,scope)»)
-				«generateExpression(expression.then,scope)»
-				«IF expression.^else !== null»
-					else «generateExpression(expression.^else,scope)»
-				«ENDIF»
-		'''
-	}
-
 	def generatePrintExpression(PrintExpression expression, String scope) {
+		val printLine = '''System.out.println(«generateArithmeticExpression(expression.print, scope)»)'''
+
 		if (expression.print instanceof ChannelReceive) {
 			return '''
-				try{
-					System.out.println(«generateArithmeticExpression(expression.print,scope)»);
-				}catch(Exception e){
+				try {
+					«printLine»;
+				} catch (Exception e) {
 					e.printStackTrace();
 				}
 			'''
 		} else
-			return '''System.out.println(«generateArithmeticExpression(expression.print,scope)»);'''
+			return '''«printLine»;'''
 	}
 
 	def generateAssignment(Assignment assignment, String scope) {
-		if (assignment.feature != null) {
-			if (assignment.value instanceof CastExpression &&
-				((assignment.value as CastExpression).target instanceof ChannelReceive)) {
-				if (!(((assignment.value as CastExpression).target as ChannelReceive).target.environment.
-					get(0).right as DeclarationObject).features.get(0).value_s.equals("smp")) { // aws environment
-					if ((assignment.value as CastExpression).type.equals("Integer")) {
-						return '''
-							«generateArithmeticExpression(assignment.feature,scope)» «assignment.op» Integer.parseInt(«((assignment.value as CastExpression).target as ChannelReceive).target.name».take().toString());
-						'''
-					} else if((assignment.value as CastExpression).type.equals("Object")){
-						return '''
-							String __res_«((assignment.value as CastExpression).target as ChannelReceive).target.name» = «((assignment.value as CastExpression).target as ChannelReceive).target.name».take().toString();
-							HashMap «generateArithmeticExpression(assignment.feature,scope)» «assignment.op» new Gson().fromJson(__res_«((assignment.value as CastExpression).target as ChannelReceive).target.name»,new TypeToken<HashMap<String, String>>() {}.getType();)
-						'''
-					} else if ((assignment.value as CastExpression).type.equals("Double")) {
-						return '''
-							«generateArithmeticExpression(assignment.feature,scope)» «assignment.op» Double.parseDouble («((assignment.value as CastExpression).target as ChannelReceive).target.name».take().toString());
-						'''
+		val assignValue = generateArithmeticExpression(assignment.value, scope)
+//		println('''Assignment: «assignment» with value «assignValue»''')
+
+		if (assignment.feature !== null) {
+			val assignFeat = generateArithmeticExpression(assignment.feature, scope)
+			if (
+				assignment.value instanceof CastExpression
+			) {
+				val castExp = assignment.value as CastExpression
+				println('''Casting «castExp.target» to «castExp.type»''')
+				if (castExp.target instanceof ChannelReceive) {
+					val chanRecvTarget = (castExp.target as ChannelReceive).target
+					if (!(chanRecvTarget.environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp")) { // aws environment
+						if (castExp.type.equals("Integer")) {
+							return '''
+								«assignFeat» «assignment.op» Integer.parseInt(«chanRecvTarget.name».take().toString());
+							'''
+						} else if (castExp.type.equals("Object")){
+							return '''
+								String __res_«chanRecvTarget.name» = «chanRecvTarget.name».take().toString();
+								HashMap «assignFeat» «assignment.op» new Gson().fromJson(__res_«chanRecvTarget.name», new TypeToken<HashMap<String, String>>() {}.getType());
+							'''
+						} else if (castExp.type.equals("Double")) {
+							return '''
+								«assignFeat» «assignment.op» Double.parseDouble («chanRecvTarget.name».take().toString());
+							'''
+						}
+					} else { // local environment
+						if (castExp.type.equals("Integer")) {
+							return '''
+								try {
+									«assignFeat» «assignment.op» Integer.parseInt(«chanRecvTarget.name».take().toString());
+								} catch (InterruptedException e1) {
+									e1.printStackTrace();
+								}
+							'''
+						} else if (castExp.type.equals("Double")) {
+							return '''
+								try {
+									«assignFeat» «assignment.op» Double.parseDouble(«chanRecvTarget.name».take().toString());
+									e1.printStackTrace();
+								}
+							'''
+						}
 					}
-				} else { // local environment
-					if ((assignment.value as CastExpression).type.equals("Integer")) {
-						return '''
-							try{
-								«generateArithmeticExpression(assignment.feature,scope)» «assignment.op» Integer.parseInt(«((assignment.value as CastExpression).target as ChannelReceive).target.name».take().toString());
-							}catch(InterruptedException e1){
-								e1.printStackTrace();
-							}
-						'''
-					} else if ((assignment.value as CastExpression).type.equals("Double")) {
-						return '''
-							try{
-								«generateArithmeticExpression(assignment.feature,scope)» «assignment.op» Double.parseDouble(«((assignment.value as CastExpression).target as ChannelReceive).target.name».take().toString());
-								e1.printStackTrace();
-							}
-						'''
-					}
+				} else { // it's just a casted assignment
+					println('''This should be a casted assignment''')
+					return ''''''
 				}
 			} else if (assignment.value instanceof ChannelReceive) {
-				if (!((assignment.value as ChannelReceive).target.environment.get(0).right as DeclarationObject).features.
-					get(0).value_s.equals("smp")) { // aws environment
+				val chanRecv = assignment.value as ChannelReceive
+				val chanRecvExp = generateArithmeticExpression(chanRecv, scope)
+
+				if (!(chanRecv.target.environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp")) { // aws environment
 					return '''
-						try{
-							«generateArithmeticExpression(assignment.feature,scope)» «assignment.op» «generateArithmeticExpression(assignment.value as ChannelReceive,scope)»
-						}catch(InterruptedException e1){
+						try {
+							«assignFeat» «assignment.op» «chanRecvExp»
+						} catch (InterruptedException e1) {
 							e1.printStackTrace();
 						}
 					'''
 				} else { // local environment
 					return '''
-						try{
-							«generateArithmeticExpression(assignment.feature,scope)» «assignment.op» «generateArithmeticExpression(assignment.value as ChannelReceive,scope)»
-						}catch(InterruptedException e1){
+						try {
+							«assignFeat» «assignment.op» «chanRecvExp»
+						} catch (InterruptedException e1) {
 							e1.printStackTrace();
 						}
 					'''
 				}
 			} else {
 				return '''
-					«generateArithmeticExpression(assignment.feature,scope)» «assignment.op» «generateArithmeticExpression(assignment.value,scope)»;
+					«assignFeat» «assignment.op» «assignValue»;
 				'''
 			}
 		}
 		if (assignment.feature_obj !== null) {
 			if (assignment.feature_obj instanceof NameObject) {
+				val nameObj = assignment.feature_obj as NameObject
+				val nameObjVarName = (nameObj.name as VariableDeclaration).name
 				typeSystem.get(scope).put(
-					((assignment.feature_obj as NameObject).name as VariableDeclaration).name + "." +
-						(assignment.feature_obj as NameObject).value,
-					valuateArithmeticExpression(assignment.value, scope))
+					nameObjVarName + "." + nameObj.value,
+					valuateArithmeticExpression(assignment.value, scope)
+				)
 				return '''
-					«((assignment.feature_obj as NameObject).name as VariableDeclaration).name».put("«(assignment.feature_obj as NameObject).value»",«generateArithmeticExpression(assignment.value,scope)»);
+					«nameObjVarName».put("«nameObj.value»", «assignValue»);
 				'''
 			}
 			if (assignment.feature_obj instanceof IndexObject) {
+				// TODO rewrite assignment according to array and matrix refactoring
+				val indexObj = assignment.feature_obj as IndexObject
+				val indexObjName = indexObj.name.name
+				val indexObjType = typeSystem.get(scope).get(indexObjName)
+				val indexObjNumDims = indexObjectNumDims(indexObjType)
 
-				if(typeSystem.get(scope).get((assignment.feature_obj as IndexObject).name.name).contains("Array")){
-					return '''«generateArithmeticExpression(assignment.feature_obj,scope)» = «generateArithmeticExpression(assignment.value,scope)»;'''
-				} else if(typeSystem.get(scope).get((assignment.feature_obj as IndexObject).name.name).contains("Matrix")){
-					return '''«generateArithmeticExpression(assignment.feature_obj,scope)» =  «generateArithmeticExpression(assignment.value,scope)»;'''
+				if (indexObjNumDims == 1) { // it's an array
+					return '''«generateArithmeticExpression(assignment.feature_obj, scope)» = «assignValue»;'''
+				} else if (indexObjNumDims == 2 || indexObjNumDims == 3) { // it's a 2d or 3d matrix
+					return '''«generateArithmeticExpression(assignment.feature_obj, scope)» = «assignValue»;'''
 				} else {
 					typeSystem.get(scope).put(
-						((assignment.feature_obj as IndexObject).name as VariableDeclaration).name + "[" +
-							generateArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(0).value,scope) + "]",
-						valuateArithmeticExpression(assignment.value, scope))
+						indexObjName + "[" + generateArithmeticExpression(indexObj.indexes.get(0).value, scope) + "]",
+						valuateArithmeticExpression(assignment.value, scope)
+					)
 					return '''
-						«((assignment.feature_obj as IndexObject).name as VariableDeclaration).name».put(«generateArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(0).value,scope)»,«generateArithmeticExpression(assignment.value,scope)»);
+						«indexObjName».put(«generateArithmeticExpression(indexObj.indexes.get(0).value, scope)», «assignValue»);
 					'''
 				}
-
 			}
 		}
 	}
 
 	def generateFunctionDefinition(FunctionDefinition definition) {
-		typeSystem.put(definition.name, new HashMap<String, String>())
-		for (exp : res.allContents.toIterable.filter(ConstantDeclaration)) {
-			typeSystem.get(definition.name).put(exp.name,typeSystem.get("main").get( exp.name))
+		typeSystem.put(definition.name, new HashMap<String, String>)
+		arraySystem.put(definition.name, new HashMap<String, List<String>>)
+
+		for (exp: res.allContents.toIterable.filter(ConstantDeclaration)) {
+			typeSystem.get(definition.name).put(
+				exp.name,
+				typeSystem.get("main").get(exp.name)
+			)
 		}
 
-		var returnExp = checkReturn(definition.body)
+		var paramList = ""
+//		println('''Parameters in «definition.name»: «definition.parameters»''')
+		for (param: definition.parameters) {
+			val paramName = (param as VariableDeclaration).name
+//			println('''Parameter «paramName»: «param»''')
+			val paramType = getParameterType(definition.name, param, definition.parameters.indexOf(param))
+//			println('''Type for parameter «paramName» is «paramType»''')
+			val sep = if (!param.equals(definition.parameters.last)) ", "
+			paramList += '''«paramType» «paramName»«sep»'''
+		}
 
-		var s = '''
-				protected static «IF returnExp !== null»«valuateArithmeticExpression(returnExp.expression, definition.name)»«ELSE»Object«ENDIF» «definition.name»(«FOR params : definition.parameters»«getParameterType(definition.name, params, definition.parameters.indexOf(params))» «(params as VariableDeclaration).name»«IF(!params.equals(definition.parameters.last))», «ENDIF»«ENDFOR») throws Exception {
-					«FOR el : definition.body.expressions»
-						«generateExpression(el, definition.name)»
-					«ENDFOR»
-					«IF returnExp === null»
-						return null;
-					«ENDIF»
-				}
+		// valuating function body to properly pick return type next
+		val functBody = '''
+			«FOR el: definition.body.expressions»
+				«generateExpression(el, definition.name, isLocal)»
+			«ENDFOR»
+		'''
+
+		val returnExp = checkReturn(definition.body)?.expression
+		val returnType = if (returnExp !== null) {
+//			print('''Valuating «definition.name» function return type ''')
+//			println('''given by expression «(returnExp as VariableLiteral).variable.name»''')
+			valuateArithmeticExpression(returnExp, definition.name)
+		} else {
+			"Object"
+		}
+//		println('''Function «definition.name» return type is `«returnType»`''')
+
+		val functDef = '''
+			protected static «returnType» «definition.name»(«paramList») throws Exception {
+				«functBody»
+
+				«IF returnExp === null»return null;«ENDIF»
+			}
 
 		'''
-//		println("generate function "+ definition.name)
-//		println("TypeSystem:")
-//		println(typeSystem.get(definition.name))
-//		println("Definition: " + definition.name)
+
+//		print('''Generated function «definition.name» ''')
+//		print('''returning «returnType» ''')
+//		print('''with parameters «paramList» ''')
+//		println('''and local typesystem «typeSystem.get(definition.name)»''')
 		if (definition.body.expressions.filter(NativeExpression).length != 0)
 			return ''''''
-		return s
+
+		return functDef
 	}
 
 	def getParameterType(String name, Expression param, int pos) {
-//		println("getParameterType " + name + " params " + param + " pos " + pos)
-		for (exp : res.allContents.toIterable.filter(Expression)) {
-			if (exp instanceof LocalFunctionCall && ((exp as LocalFunctionCall).target.name == name)) {
-				var typeobject = valuateArithmeticExpression(
-					((exp as LocalFunctionCall).input as LocalFunctionInput).inputs.get(pos), "main")
-//				println("params: " + param + " ----- type object " + typeobject)
-				if (typeobject == "Table") {
-					(param as VariableDeclaration).typeobject = "dat"
-					typeSystem.get(name).put((param as VariableDeclaration).name, "Table");
+		var varParam = param as VariableDeclaration
+//		print('''Get type of parameter «varParam.name» in function «name»''')
+//		println(''', position «pos»''')
+		for (exp: res.allContents.toIterable.filter(Expression)) { // FIXME why all contents?
+//			println('''Considering expression «exp»''')
+			if (
+				exp instanceof LocalFunctionCall &&
+				(exp as LocalFunctionCall).target.name == name
+			) {
+				val localFunctCall = exp as LocalFunctionCall
+				val localFunctInputs = (localFunctCall.input as LocalFunctionInput).inputs
+				var paramType = valuateArithmeticExpression(
+					localFunctInputs.get(pos),
+					"main"
+				)
+//				println('''In local function «name» parameter '«varParam.name»' type is «paramType»''')
+				if (paramType === null) {
+//					println('''FLY type for «varParam.name» in «name» is currently '«varParam.typeobject»'!''')
+//					variableParam.typeobject = "var"
+//					typeSystem.get(name).put(variableParam.name, "Object")
+				}
+				if (paramType == "Table") {
+					varParam.typeobject = "dat"
+					typeSystem.get(name).put(varParam.name, "Table")
 				} else {
-					(param as VariableDeclaration).typeobject = "var"
-					if (typeobject == "HashMap") {
-						typeSystem.get(name).put((param as VariableDeclaration).name, "HashMap");
-						//println(typeSystem.get(name))
-						for (String key : typeSystem.get("main").keySet()) {
+					varParam.typeobject = "var"
+					if (paramType == "HashMap") {
+						typeSystem.get(name).put(varParam.name, "HashMap")
+//						println(typeSystem.get(name))
+						for (String key: typeSystem.get("main").keySet()) {
 							if (key.contains(
-								(((exp as LocalFunctionCall).input as LocalFunctionInput).inputs.get(
-									pos) as VariableLiteral).variable.name + ".")) {
-								//println(key.indexOf("."))
-								var tmp = key.substring(key.indexOf(".") + 1, key.length);
-								typeSystem.get(name).put((param as VariableDeclaration).name + "." + tmp,
-									typeSystem.get("main").get(key));
+								(localFunctInputs.get(pos) as VariableLiteral).variable.name + ".")
+							) {
+//								println(key.indexOf("."))
+								val tmp = key.substring(key.indexOf(".") + 1, key.length)
+								typeSystem.get(name).put(
+									varParam.name + "." + tmp,
+									typeSystem.get("main").get(key)
+								);
 							}
 						}
-					} else if (typeobject.contains("Array")) {
-						typeSystem.get(name).put((param as VariableDeclaration).name, typeobject);
-						var tmp =  typeobject.split("_")
-						typeobject=tmp.get(1)+"[]"
-					} else if(typeobject.contains("Matrix")){
-						typeSystem.get(name).put((param as VariableDeclaration).name, typeobject);
-						var tmp =  typeobject.split("_")
-						if(tmp.length == 3){
-							typeobject=tmp.get(1)+"[][]"
-						}else if (tmp.length ==4){
-							typeobject=tmp.get(1)+"[][][]"
+					} else if (paramType.endsWith("[]")) { // FIXME rewrite according to array and matrix refactoring
+						typeSystem.get(name).put(varParam.name, paramType)
+						val dims = indexObjectNumDims(paramType)
+						val tempType = paramType.split('\\[\\]').get(0)
+						paramType = switch dims { // FIXME is this even necessary now?
+							case 1: tempType + "[]"
+							case 2: tempType + "[][]"
+							case 3: tempType + "[][][]"
 						}
-					} else{
-						typeSystem.get(name).put((param as VariableDeclaration).name, typeobject);
+						
+//						println('''«varParam.name» type in local «name» is «paramType»''')
+					} else if (paramType.startsWith("Array")) {
+						println('''«varParam.name» type in local «name» is «paramType», why it's an old type array in local?''')
+					} else if (paramType.startsWith("Matrix")) {
+						println('''«varParam.name» type in local «name» is «paramType», why it's an old type matrix in local?''')
+					} else if (paramType == "Graph") {
+//						println('''«varParam.name» is definitely a local Graph object!''')
+						typeSystem.get(name).put(varParam.name, "Graph")
+					} else {
+//						println('''«varParam.name» type in local «name» is «paramType»''')
+						typeSystem.get(name).put(varParam.name, paramType)
 					}
 				}
-				return typeobject
-			} else if (exp instanceof FlyFunctionCall && ((exp as FlyFunctionCall).target.name == name)) {
-				if ((exp as FlyFunctionCall).input.isIs_for_index) {
-					if ((exp as FlyFunctionCall).input.f_index instanceof RangeLiteral){
-						typeSystem.get(name).put((param as VariableDeclaration).name,"Integer")
+				return paramType
+			} else if (
+				exp instanceof FlyFunctionCall &&
+				((exp as FlyFunctionCall).target.name == name)
+			) {
+				val flyFunctCall = exp as FlyFunctionCall
+//				print('''In FLY function «name», parameter '«varParam.name»' type is ''')
+
+				if (flyFunctCall.input.isIs_for_index) {
+//					print('''«flyFunctCall.input.f_index», a ''')
+					if (flyFunctCall.input.f_index instanceof RangeLiteral) {
+						typeSystem.get(name).put(varParam.name, "Integer")
+//						println("range literal (integer)")
+
 						return "Integer"
-					}else if ((exp as FlyFunctionCall).input.f_index instanceof VariableLiteral) {
-						var typeobject = valuateArithmeticExpression(
-							(exp as FlyFunctionCall).input.f_index as VariableLiteral, "main");
-						if (typeobject == "Table") {
-							(param as VariableDeclaration).typeobject = "dat"
-							typeSystem.get(name).put((param as VariableDeclaration).name, "Table");
+					} else if (flyFunctCall.input.f_index instanceof VariableLiteral) {
+						var paramType = valuateArithmeticExpression(
+							flyFunctCall.input.f_index as VariableLiteral,
+							"main"
+						)
+//						println('''«paramType» in for loop''')
+						if (paramType == "Table") {
+							varParam.typeobject = "dat"
+							typeSystem.get(name).put(varParam.name, "Table")
 						} else {
-							(param as VariableDeclaration).typeobject = "var"
-							if (typeobject == "HashMap") {
-								typeSystem.get(name).put((param as VariableDeclaration).name, "HashMap");
-								for (String key : typeSystem.get("main").keySet()) {
-									if (key.contains(
-										(((exp as LocalFunctionCall).input as LocalFunctionInput).inputs.get(
-											pos) as VariableLiteral).variable.name + ".")) {
-										//println(key.indexOf("."))
-										var tmp = key.substring(key.indexOf(".") + 1, key.length);
-										typeSystem.get(name).put((param as VariableDeclaration).name + "." + tmp,
-											typeSystem.get("main").get(key));
+							varParam.typeobject = "var"
+							if (paramType == "HashMap") {
+								typeSystem.get(name).put(varParam.name, "HashMap")
+								for (String key: typeSystem.get("main").keySet()) {
+									val localFunctInputs = ((exp as LocalFunctionCall).input as LocalFunctionInput).inputs
+									if (key.contains((localFunctInputs.get(pos) as VariableLiteral).variable.name + ".")) {
+//										println(key.indexOf("."))
+										val tmp = key.substring(key.indexOf(".") + 1, key.length)
+										typeSystem.get(name).put(
+											varParam.name + "." + tmp,
+											typeSystem.get("main").get(key)
+										);
 									}
 								}
-							}else if(typeobject.contains("Array")){
-								typeSystem.get(name).put((param as VariableDeclaration).name, typeobject);
-								var tmp =  typeobject.split("_")
-								typeobject=tmp.get(1)+"[]"
-							}else if(typeobject.contains("Matrix")){
-								typeSystem.get(name).put((param as VariableDeclaration).name, typeobject);
-								var tmp =  typeobject.split("_")
-								if(tmp.length == 3){
-									typeobject=tmp.get(1)+"[][]"
-								}else if (tmp.length ==4){
-									typeobject=tmp.get(1)+"[][][]"
+							} else if (paramType.endsWith("[]")) {
+								typeSystem.get(name).put(varParam.name, paramType)
+								val dims = indexObjectNumDims(paramType)
+								val tempType = paramType.split('\\[\\]').get(0)
+								paramType = switch dims {
+									case 1: tempType + "[]"
+									case 2: tempType + "[][]"
+									case 3: tempType + "[][][]"
 								}
-							}else { //TODO support to array and matrices
-								typeSystem.get(name).put((param as VariableDeclaration).name, typeobject);
+
+//								println('''«varParam.name» type in remote «name» is «paramType»''')
+							} else if (paramType.contains("Array")) { // FIXME rewrite according to array and matrix refactoring
+								println('''«varParam.name» type in remote «name» is «paramType», why it's an old type array in remote?''')
+							} else if (paramType.contains("Matrix")) {
+								println('''«varParam.name» type in remote «name» is «paramType», why it's an old type matrix in remote?''')
+							} else if (paramType == "Graph") {
+//								println('''«varParam.name» is definitely a remote Graph object!''')
+								typeSystem.get(name).put(varParam.name, "Graph")
+							} else { // TODO support to array and matrices
+//								println('''«varParam.name» type in remote «name» is «paramType»''')
+								typeSystem.get(name).put(varParam.name, paramType)
 							}
 						}
-						return typeobject
+
+						return paramType
 					}
 				} else {
-					var typeobject = valuateArithmeticExpression(
-						((exp as FlyFunctionCall).input as FunctionInput).expressions.get(pos), "main");
-					if (typeobject == "Table") {
-						(param as VariableDeclaration).typeobject = "dat"
-						typeSystem.get(name).put((param as VariableDeclaration).name, "Table");
+					var paramType = valuateArithmeticExpression(
+						flyFunctCall.input.expressions.get(pos),
+						"main"
+					)
+//					println(paramType)
+
+					if (paramType == "Table") {
+						varParam.typeobject = "dat"
+						typeSystem.get(name).put(varParam.name, "Table")
 					} else {
-						(param as VariableDeclaration).typeobject = "var"
-						if (typeobject == "HashMap") {
-							typeSystem.get(name).put((param as VariableDeclaration).name, "HashMap");
+						varParam.typeobject = "var"
+						if (paramType == "HashMap") {
+							typeSystem.get(name).put(varParam.name, "HashMap")
 							for (String key : typeSystem.get("main").keySet()) {
+								val localFunctInputs = ((exp as LocalFunctionCall).input as LocalFunctionInput).inputs
 								if (key.contains(
-									(((exp as LocalFunctionCall).input as LocalFunctionInput).inputs.get(
-										pos) as VariableLiteral).variable.name + ".")) {
-									//println(key.indexOf("."))
-									var tmp = key.substring(key.indexOf(".") + 1, key.length);
-									typeSystem.get(name).put((param as VariableDeclaration).name + "." + tmp,
-										typeSystem.get("main").get(key));
+									(localFunctInputs.get(pos) as VariableLiteral).variable.name + ".")) {
+//									println(key.indexOf("."))
+									val tmp = key.substring(key.indexOf(".") + 1, key.length)
+									typeSystem.get(name).put(
+										varParam.name + "." + tmp,
+										typeSystem.get("main").get(key)
+									)
 								}
 							}
 						} else {
-							typeSystem.get(name).put((param as VariableDeclaration).name, typeobject);
+							typeSystem.get(name).put(varParam.name, paramType)
 						}
 					}
-					return typeobject
+
+					return paramType
 				}
 			}
 		}
 	}
 
 	def String valuateArithmeticExpression(ArithmeticExpression exp, String scope) {
-//		println("Arithmetic expression type: " + typeSystem.get(scope))
+//		println('''Arithmetic expression type: «typeSystem.get(scope)»''')
 		if (exp instanceof NumberLiteral) {
 			return "Integer"
 		} else if (exp instanceof BooleanLiteral) {
@@ -3254,64 +3571,94 @@ class FLYGenerator extends AbstractGenerator {
 			return "Double"
 		} else if (exp instanceof VariableLiteral) {
 			val variable = exp.variable
-			if (variable.typeobject.equals("var")) {
+//			println('''Valuating «variable.typeobject» «variable.name» in «scope»...''')
+			if (
+				variable.typeobject !== null && (
+					variable.typeobject.equals("var") ||
+					variable.typeobject.equals("const") // TODO check
+				)
+			) {
 				if (variable.right instanceof DeclarationObject) {
 					var type = (variable.right as DeclarationObject).features.get(0).value_s
 					switch (type) {
 						case "dataframe": {
 							return "Table"
 						}
-						case "channel":{
+						case "channel": {
 							return "channel"
 						}
-						case "random":{
+						case "random": {
 							return "Random"
 						}
-						case "file":{
-							if((variable.right as DeclarationObject).features.get(1).value_s != null){
+						case "file": {
+							if ((variable.right as DeclarationObject).features.get(1).value_s !== null) {
 								var path = (variable.right as DeclarationObject).features.get(1).value_s.split("/")
-								var filename = path.get(path.length-1)
+								var filename = path.get(path.length - 1)
 								if (filename.split(".").length != 2)
 									return "String[]"
 								else
 									return "File"
-							}else
+							} else
 								return "File"
 						}
+						case "graph": {
+							return "Graph"
+						}
 						default: {
-							return "variable"
+							return "Object"
 						}
 					}
 				} else if (variable.right instanceof NameObjectDef) {
 					return "HashMap"
 				} else if (variable.right instanceof ArithmeticExpression) {
 					return valuateArithmeticExpression(variable.right as ArithmeticExpression, scope)
-				}else{
-					return typeSystem.get(scope).get(variable.name) // if it's a parameter of a FunctionDefinition
+				} else if (variable.right instanceof ArrayDefinition) {
+//					println('''«variable.name» is in an array declaration''')
+					val indexObjType = typeSystem.get(scope).get(variable.name)
+
+					// convert wrapping types into primitive ones
+					switch indexObjType {
+						case "Integer[]": return "int[]"
+						case "Double[]": return "double[]"
+						default: return indexObjType
+					}
+				} else {
+					val type = typeSystem.get(scope).get(variable.name) // if it's a parameter of a FunctionDefinition
+//					println('''«type» may be «variable.name» type''')
+//					println('''«variable.name» right side: «variable.right»''')
+
+					return type
 				}
+			} else {
+				println('''«variable.name» hasn't been properly FLY-typed! ''')
 			}
-			return "variable"
+			print('''Cannot pick type for «variable.name», ''')
+			println("returning 'Object'...")
+
+			return "Object"
 		} else if (exp instanceof NameObject) {
 			return typeSystem.get(scope).get(exp.name.name + "." + exp.value)
 		} else if (exp instanceof IndexObject) {
-			if (typeSystem.get(scope).get(exp.name.name).contains("Array")  ){
-				var type = typeSystem.get(scope).get(exp.name.name).split('_')
-				if(exp.indexes.get(0).value2===null){
-					return type.get(1)
-				}else{
-					if(type.get(1).equals("Integer")){
-						return "Integer[]"
-					}else if(type.get(1).equals("Double")){
-						return "Double[]"
-					}else if(type.get(1).equals("String")){
+			val arrayType = typeSystem.get(scope).get(exp.name.name)
+			val arrayNumDims = indexObjectNumDims(arrayType)
+			val indexType = arrayType.split('\\[\\]').get(0)
+//			println('''«exp.name.name» type is «indexType» and has «arrayNumDims» dimensions''')
+			if (arrayNumDims == 1){ // it's an array
+				if (exp.indexes.get(0).value2 === null) {
+					return indexType
+				} else { // TODO what about any other type?
+					if (indexType.equals("Integer")) {
+						return "int[]"
+					} else if (indexType.equals("Double")) {
+						return "double[]"
+					} else if (indexType.equals("String")) {
 						return "String[]"
 					}
 				}
-			}else if(typeSystem.get(scope).get(exp.name.name).contains("Matrix")){
-				var type = typeSystem.get(scope).get(exp.name.name).split('_')
-				return type.get(1)
+			} else if (arrayNumDims == 2 || arrayNumDims == 3) { // it's a matrix
+				return indexType
 			} else {
-				return typeSystem.get(scope).get(exp.name.name + "[" + generateArithmeticExpression(exp.indexes.get(0).value,scope) + "]")
+				return typeSystem.get(scope).get(exp.name.name + "[" + generateArithmeticExpression(exp.indexes.get(0).value, scope) + "]")
 			}
 		} else if (exp instanceof DatTableObject) {
 			return "Table"
@@ -3324,8 +3671,14 @@ class FLYGenerator extends AbstractGenerator {
 		if (exp instanceof BinaryOperation) {
 			var left = valuateArithmeticExpression(exp.left, scope)
 			var right = valuateArithmeticExpression(exp.right, scope)
-			if (exp.feature.equals("+") || exp.feature.equals("-") || exp.feature.equals("*") ||
-				exp.feature.equals("/")) {
+//			println('''Binary operation: «left» «exp.feature» «right»''')
+
+			if (
+				exp.feature.equals("+") ||
+				exp.feature.equals("-") ||
+				exp.feature.equals("*") ||
+				exp.feature.equals("/")
+			) {
 				if (left.equals("String") || right.equals("String"))
 					return "String"
 				else if (left.equals("Double") || right.equals("Double"))
@@ -3335,6 +3688,9 @@ class FLYGenerator extends AbstractGenerator {
 			} else
 				return "Boolean"
 		} else if (exp instanceof CastExpression) {
+			if (exp.op.equals("arrayof")) { // FIXME redefine 'arrayof' type
+				return '''«exp.type»[]'''
+			}
 			if (exp.type.equals("Object")) {
 				return "HashMap"
 			}
@@ -3353,6 +3709,9 @@ class FLYGenerator extends AbstractGenerator {
 			if (exp.type.equals("Date")) {
 				return "LocalDate"
 			}
+			if (exp.type.equals("Graph")) {
+				return "Graph"
+			}
 		} else if (exp instanceof ParenthesizedExpression) {
 			return valuateArithmeticExpression(exp.expression, scope)
 		}
@@ -3360,18 +3719,19 @@ class FLYGenerator extends AbstractGenerator {
 			if (exp.feature.equals("round")) {
 				return "Integer"
 			} else {
-				for (el : exp.expressions) {
+				for (el: exp.expressions) {
 					if (valuateArithmeticExpression(el, scope).equals("Double")) {
 						return "Double"
 					}
 				}
 				return "Integer"
 			}
-		} else if (exp instanceof TimeFunction){
+		} else if (exp instanceof TimeFunction) {
 			return "Long"
-		}else if (exp instanceof VariableFunction) {
+		} else if (exp instanceof VariableFunction) {
+//			println('''Variable function «exp.feature» over «exp.target.typeobject» «exp.target.name»''')
 			if (exp.target.typeobject.equals("var")) {
-				if (exp.target.right instanceof DeclarationObject){
+				if (exp.target.right instanceof DeclarationObject) {
 					var type = (exp.target.right as DeclarationObject).features.get(0).value_s
 					if (type.equals("random")){
 						if (exp.feature.equals("nextBoolean")) {
@@ -3381,19 +3741,27 @@ class FLYGenerator extends AbstractGenerator {
 						} else if (exp.feature.equals("nextInt")) {
 							return "Integer"
 						}
-					} else if (type.equals("graph")) { // TODO check graph method types
+					} else if (type.equals("graph")) {
+//						println('''«exp.feature» return type for graphs...''')
 						return graphMethodsReturnTypes.getOrDefault(exp.feature, "Object")
 					}
 				} else if (exp.feature.equals("split")) {
 					return "String[]"
 				} else if (exp.feature.contains("indexOf") || exp.feature.equals("length")) {
 					return "Integer"
-				} else if (exp.feature.equals("concat") || exp.feature.equals("substring")||
-					exp.feature.equals("toLowerCase") || exp.feature.equals("toUpperCase")) {
+				} else if (
+					exp.feature.equals("concat") ||
+					exp.feature.equals("substring")||
+					exp.feature.equals("toLowerCase") ||
+					exp.feature.equals("toUpperCase")
+				) {
 					return "String"
-				} if(exp.feature.equals("charAt")){
+				} if (exp.feature.equals("charAt")) {
 					return "char"
-				}else {
+				} else if (graphMethodsReturnTypes.keySet.contains(exp.feature)) {
+					return graphMethodsReturnTypes.get(exp.feature)
+				} else { // FIXME why Boolean?
+					println('''Cannot determine «exp.feature» type''')
 					return "Boolean"
 				}
 			}
@@ -3404,61 +3772,17 @@ class FLYGenerator extends AbstractGenerator {
 
 	def checkReturn(EObject el) {
 		if (el instanceof BlockExpression) {
-			for (element : (el as BlockExpression).expressions) {
+			for (element: (el as BlockExpression).expressions) {
 				if (element instanceof FunctionReturn) {
 					return element
 				}
 			}
+
 			return null
 		}
 	}
 
-	def Boolean checkAWS(){
-		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-			filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)]
-		){
-			if ((env.right as DeclarationObject).features.get(0).value_s.equals("aws"))
-				return true
-		}
-		return false
-	}
-
-	def Boolean checkAWSDebug(){
-		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-			filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)]
-		){
-			if ((env.right as DeclarationObject).features.get(0).value_s.equals("aws-debug")){
-				return true
-			}
-		}
-		return false
-	}
-
-	def Boolean checkAzure(){
-		for(VariableDeclaration env: res.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-			filter[list_environment.contains((right as DeclarationObject).features.get(0).value_s)]
-		){
-			if ((env.right as DeclarationObject).features.get(0).value_s.equals("azure"))
-				return true
-		}
-		return false
-	}
-
-	private def Boolean checkGraph() {
-		for (
-			VariableDeclaration env: res
-			.allContents
-			.toIterable
-			.filter(VariableDeclaration)
-			.filter[right instanceof DeclarationObject]
-			.filter[(right as DeclarationObject).features.get(0).value_s.equals("graph")]
-		) {
-			return true
-		}
-		return false
-	}
-
-	def checkBlock(EObject el) {
+	def boolean checkBlock(EObject el) {
 		if (el instanceof FunctionDefinition) {
 			return true
 		}

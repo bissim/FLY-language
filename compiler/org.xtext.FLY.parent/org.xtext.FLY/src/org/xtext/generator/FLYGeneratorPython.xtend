@@ -51,38 +51,47 @@ import org.xtext.fLY.WhileExpression
 import org.xtext.fLY.PostfixOperation
 import org.xtext.fLY.ArrayDefinition
 import org.xtext.fLY.FlyFunctionCall
-import org.xtext.fLY.EnvironemtLiteral
+import org.xtext.fLY.EnvironmentLiteral
 
 class FLYGeneratorPython extends AbstractGenerator {
-	String name = null
-	String env = null
-	FunctionDefinition root = null
+	var name = null as String
+	var env = null as String
+	var root = null as FunctionDefinition
 	var id_execution = null
-	HashMap<String, HashMap<String, String>> typeSystem = null
-	HashMap<String, FunctionDefinition> functionCalled = null
-	String language
+	var typeSystem = null as HashMap<String, HashMap<String, String>>
+	var arraySystem = null as HashMap<String, HashMap<String, List<String>>>
+	var functionCalled = null as HashMap<String, FunctionDefinition>
+	var graphMethodsReturnTypes = null as Map<String, String>
+	var language = null as String
 	int nthread
 	int memory
 	int timeout
-	String user = null
+	var user = null as String
 	Resource resourceInput
 	boolean isLocal
 	boolean isAsync
-	String env_name=""
-	var list_environment = new ArrayList<String>(Arrays.asList("smp","aws","aws-debug","azure"));
-	ArrayList listParams = null
-	List<String> allReqs=null
+	var env_name = ""
+	var list_environment = #["smp", "aws", "aws-debug", "azure"]
+	var listParams = null as ArrayList<String>
+	var allReqs = null as List<String>
 
-	Map<String, String> graphMethodsReturnTypes = null
-
-	def generatePython(Resource input, IFileSystemAccess2 fsa, IGeneratorContext context, String name_file,
-		FunctionDefinition func, VariableDeclaration environment, HashMap<String, HashMap<String, String>> scoping,
-		long id, boolean local, boolean async) {
+	def generatePython(
+		Resource input,
+		IFileSystemAccess2 fsa,
+		IGeneratorContext context,
+		String name_file,
+		FunctionDefinition func,
+		VariableDeclaration environment,
+		HashMap<String, HashMap<String, String>> scoping,
+		long id,
+		boolean local,
+		boolean async
+	) {
 		name = name_file
 		root = func
 		typeSystem = scoping
 		id_execution = id
-		env_name=environment.name
+		env_name = environment.name
 		if (!local) {
 			env = (environment.right as DeclarationObject).features.get(0).value_s
 			user = (environment.right as DeclarationObject).features.get(1).value_s
@@ -97,12 +106,12 @@ class FLYGeneratorPython extends AbstractGenerator {
 		}
 
 		resourceInput = input
-		functionCalled = new HashMap<String, FunctionDefinition>();
-		for (element : input.allContents.toIterable.filter(FunctionDefinition)
+		functionCalled = new HashMap<String, FunctionDefinition>
+		for (element: input.allContents.toIterable
+			.filter(FunctionDefinition)
 			.filter[it.name != root.name]
-			.filter[it.body.expressions.toList.filter(NativeExpression).length>0]) {
-
-			functionCalled.put(element.name,element)
+			.filter[it.body.expressions.toList.filter(NativeExpression).length > 0]) {
+			functionCalled.put(element.name, element)
 		}
 		this.isAsync = async
 		this.isLocal = local;
@@ -111,6 +120,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	def setGraphMethodsReturnTypes(Map<String, String> map) {
 		this.graphMethodsReturnTypes = map
+	}
+
+	def setArraySystem(HashMap<String, HashMap<String, List<String>>> map) {
+		this.arraySystem = map
 	}
 
 	override doGenerate(Resource input, IFileSystemAccess2 fsa, IGeneratorContext context) {
@@ -127,20 +140,19 @@ class FLYGeneratorPython extends AbstractGenerator {
 		if (env.equals("azure"))
 			allReqs.add("azure-storage-queue")
 		saveToRequirements(allReqs, fsa)
-		println("Root name: " + root.name)
+//		println("Root name: " + root.name)
 		if (isLocal) {
-			fsa.generateFile(root.name + ".py", input.compilePython(root.name, true))
-		}else {
-			if(env.equals("aws-debug"))
-				fsa.generateFile("docker-compose-script.sh",input.compileDockerCompose())
-			fsa.generateFile(root.name +"_"+ env_name +"_deploy.sh", input.compileScriptDeploy(root.name, false))
-			fsa.generateFile(root.name +"_"+ env_name + "_undeploy.sh", input.compileScriptUndeploy(root.name, false))
+			fsa.generateFile(root.name + ".py", input.compilePython(root.name, isLocal))
+		} else {
+			if (env.equals("aws-debug"))
+				fsa.generateFile("docker-compose-script.sh", input.compileDockerCompose)
+			fsa.generateFile(root.name + "_" + env_name + "_deploy.sh", input.compileScriptDeploy(root.name, isLocal))
+			fsa.generateFile(root.name + "_" + env_name + "_undeploy.sh", input.compileScriptUndeploy(root.name, isLocal))
 		}
 	}
 
 	def channelsNames(BlockExpression exps) {
-
-		var names = new HashSet<String>();
+		var names = new HashSet<String>
 		val chRecvs = resourceInput.allContents
 				.filter[it instanceof ChannelReceive]
 				.filter[functionContainer(it) === root.name]
@@ -157,17 +169,17 @@ class FLYGeneratorPython extends AbstractGenerator {
 				.map[it.target as VariableDeclaration]
 				.map[it.name]
 
-		while(chRecvs.hasNext()) {
+		while (chRecvs.hasNext()) {
 			names.add(chRecvs.next())
 		}
-		while(chSends.hasNext()) {
+		while (chSends.hasNext()) {
 			names.add(chSends.next())
 		}
 
 		return names.toArray()
 	}
 
-	def functionContainer(EObject e) {
+	def String functionContainer(EObject e) {
 		var parent = e.eContainer
 		if (parent === null) {
 			return ""
@@ -188,17 +200,17 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	def paramsName(List<Expression> expressions) {
 			val tmp = new ArrayList()
-			for(Expression e: expressions){
+			for (Expression e: expressions) {
 				tmp.add((e as VariableDeclaration).name)
 				//println("sdasds "+ (e as VariableDeclaration).name)
 			}
-
 
 			return tmp
 	}
 
 	def generateBodyPyLocal(BlockExpression exps, List<Expression> parameters, String name, String env, boolean local) {
 		val channelNames = channelsNames(exps)
+
 		return '''
 		import random
 		import time
@@ -213,26 +225,26 @@ class FLYGeneratorPython extends AbstractGenerator {
 		__sock_loc = socket.socket() # TODO
 		__sock_loc.connect(('', 9090))
 
-		«FOR chName : channelNames»
+		«FOR chName: channelNames»
 			«chName» = __sock_loc.makefile('rwb')
 		«ENDFOR»
 
-		«FOR fd:functionCalled.values()»
+		«FOR fd: functionCalled.values»
 			«generatePyExpression(fd, name, local)»
 
 		«ENDFOR»
 
 		def main(event):
-			«FOR exp : parameters»
+			«FOR exp: parameters»
 				«IF typeSystem.get(name).get((exp as VariableDeclaration).name).equals("Table") »
-					__columns=json.loads(event)[0].keys()
+					__columns = json.loads(event)[0].keys()
 					«(exp as VariableDeclaration).name» = pd.read_json(event)
 					«(exp as VariableDeclaration).name» = «(exp as VariableDeclaration).name»[__columns]
 				«ELSE»
 					«(exp as VariableDeclaration).name» = json.loads(event)
 				«ENDIF»
 			«ENDFOR»
-			«FOR exp : exps.expressions»
+			«FOR exp: exps.expressions»
 				«generatePyExpression(exp,name, local)»
 			«ENDFOR»
 			__sock_loc.close()
@@ -247,8 +259,8 @@ class FLYGeneratorPython extends AbstractGenerator {
 	}
 
 	def generateBodyPy(BlockExpression exps, List<Expression> parameters, String name, String env, boolean local) {
-		//println("generaty python body "+name)
-		//println(typeSystem.get(name))
+//		println('''Generating «name» Python body''')
+//		println('''Type system for «name»: «typeSystem.get(name)»''')
 		val channelNames = channelsNames(exps)
 		listParams = paramsName(parameters)
 
@@ -259,24 +271,24 @@ class FLYGeneratorPython extends AbstractGenerator {
 			import time
 			import math
 			«IF allReqs.contains("pandas")»
-			import pandas as pd
-			import numpy as np
+				import pandas as pd
+				import numpy as np
 			«ENDIF»
 			import json
 			import urllib.request
 			«IF checkGraph()»
-			from fly.graph.graph import Graph
+				from fly.graph.graph import Graph
 			«ENDIF»
 
 			«IF env.contains("aws")»
 			import boto3
 			«IF env.equals("aws")»
-				sqs = boto3.resource('sqs')
+			sqs = boto3.resource('sqs')
 			«ELSE»
-				sqs = boto3.resource('sqs',endpoint_url='http://192.168.0.1:4576')
+			sqs = boto3.resource('sqs',endpoint_url='http://192.168.0.1:4576')
 			«ENDIF»
 
-			«FOR chName : channelNames»
+			«FOR chName: channelNames»
 				«chName» = sqs.get_queue_by_name(QueueName='«chName»-"${id}"')
 			«ENDFOR»
 			«ELSEIF env == "azure"»
@@ -288,7 +300,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«IF env.contains("aws") »
 			def handler(event,context):
 				__environment = 'aws'
-				id_func=event['id']
+				id_func = event['id']
 				data = event['data']
 			«ELSEIF env == "azure"»
 			def main(req: func.HttpRequest):
@@ -296,73 +308,77 @@ class FLYGeneratorPython extends AbstractGenerator {
 				__queue_service = QueueService(account_name='"${storageName}"', account_key='"${storageKey}"')
 				__queue_service.encode_function = QueueMessageFormat.text_base64encode
 				__event = req.get_json()
-				id_func= __event['id']
+				id_func = __event['id']
 				data = __event['data']
 			«ENDIF»
-				«FOR exp : parameters»
-					«IF typeSystem.get(name).get((exp as VariableDeclaration).name).equals("Table")» // || typeSystem.get(name).get((exp as VariableDeclaration).name).equals("File")»
-						__columns = data[0].keys()
-						«(exp as VariableDeclaration).name» = pd.read_json(json.dumps(data))
-						«(exp as VariableDeclaration).name» = «(exp as VariableDeclaration).name»[__columns]
-					«ELSEIF  typeSystem.get(name).get((exp as VariableDeclaration).name).contains("Matrix")»
-						__«(exp as VariableDeclaration).name»_matrix = data[0]
-						__«(exp as VariableDeclaration).name»_rows = data[0]['rows']
-						__«(exp as VariableDeclaration).name»_cols = data[0]['cols']
-						__«(exp as VariableDeclaration).name»_values = data[0]['values']
-						__index = 0
-						«(exp as VariableDeclaration).name» = [None] * (__«(exp as VariableDeclaration).name»_rows * __«(exp as VariableDeclaration).name»_cols)
-						for __i in range(__«(exp as VariableDeclaration).name»_rows):
-							for __j in range(__«(exp as VariableDeclaration).name»_cols):
-								«(exp as VariableDeclaration).name»[__i*__«(exp as VariableDeclaration).name»_cols+__j] = __«(exp as VariableDeclaration).name»_values[__index]['value']
-								__index+=1
-					«ELSE»
-				«(exp as VariableDeclaration).name» = data # TODO check
-					«ENDIF»
-				«ENDFOR»
-				«FOR exp : exps.expressions»
-					«generatePyExpression(exp,name, local)»
-				«ENDFOR»
-				«IF env.contains("aws") »
-					__syncTermination = sqs.get_queue_by_name(QueueName='termination-"${function}"-"${id}"-'+str(id_func))
-					__syncTermination.send_message(MessageBody=json.dumps('terminate'))
-				«ELSEIF env == "azure"»
-					__queue_service.put_message('termination-"${function}"-"${id}"-'+str(id_func), 'terminate')
+			«FOR exp: parameters»
+				«val varName = (exp as VariableDeclaration).name»
+				«val varType = typeSystem.get(name).get(varName)»
+				«IF varType.equals("Table")»
+					__columns = data[0].keys()
+					«varName» = pd.read_json(json.dumps(data))
+					«varName» = «varName»[__columns]
+				«ELSEIF varType.endsWith("[][]")»
+					__«varName»_matrix = data[0]
+					__«varName»_rows = data[0]['rows']
+					__«varName»_cols = data[0]['cols']
+					__«varName»_values = data[0]['values']
+					__index = 0
+					«varName» = [None] * (__«varName»_rows * __«varName»_cols)
+					for __i in range(__«varName»_rows):
+						for __j in range(__«varName»_cols):
+							«varName»[__i*__«varName»_cols+__j] = __«varName»_values[__index]
+							__index += 1
+				«ELSE»
+					«varName» = data # TODO check
 				«ENDIF»
+			«ENDFOR»
+			«FOR exp: exps.expressions»
+				«generatePyExpression(exp,name, local)»
+			«ENDFOR»
+			«IF env.contains("aws") »
+				__syncTermination = sqs.get_queue_by_name(QueueName='termination-"${function}"-"${id}"-'+str(id_func))
+				__syncTermination.send_message(MessageBody=json.dumps('terminate'))
+			«ELSEIF env == "azure"»
+				__queue_service.put_message('termination-"${function}"-"${id}"-'+str(id_func), 'terminate')
+			«ENDIF»
 		'''
 	}
 
-	def generatePyExpression(Expression exp, String scope, boolean local) {
+	def String generatePyExpression(Expression exp, String scope, boolean local) {
 
 		var s = ''''''
 		if (exp instanceof ChannelSend) {
-			var env = (exp.target.environment.get(0).right as DeclarationObject).features.get(0).value_s ;//(exp.target as DeclarationObject).features.get(0).value_s;
+			var env = (exp.target.environment.get(0).right as DeclarationObject).features.get(0).value_s //(exp.target as DeclarationObject).features.get(0).value_s;
 			s += '''
 			«IF local»
 				«exp.target.name».write(json.dumps(«generatePyArithmeticExpression(exp.expression, scope, local)»).encode('utf8'))
-
 			«ELSEIF (env.contains("aws"))»
 «««				«println("exp.expression in " + env + ": " + exp.expression)»
+				«var varLit = null as VariableLiteral»
+				«var varName = null as String»
+				«var varLitType = null as String»
 				«IF exp.expression instanceof VariableLiteral»
+					«varLit = exp.expression as VariableLiteral»
+					«varName = varLit.variable.name»
+					«varLitType = typeSystem.get(scope).get(varName)»
 «««					«println("exp.expression.variable.name: " + (exp.expression as VariableLiteral).variable.name)»
 «««					«println("exp type: " + typeSystem.get(scope).get((exp.expression as VariableLiteral).variable.name))»
 				«ENDIF»
-				«IF exp.expression instanceof VariableLiteral && typeSystem.get(scope).get((exp.expression as VariableLiteral).variable.name).contains("Matrix") »
-					«IF listParams.contains((exp.expression as VariableLiteral).variable.name)»
-					__index=0
-					for __i in range(__«(exp.expression as VariableLiteral).variable.name»_rows):
-						for __j in range(__«(exp.expression as VariableLiteral).variable.name»_cols):
-							__«(exp.expression as VariableLiteral).variable.name»_matrix['values'][__index]= «(exp.expression as VariableLiteral).variable.name»[__i*__«(exp.expression as VariableLiteral).variable.name»_cols+__j]
-							__index+=1
+				«IF exp.expression instanceof VariableLiteral && varLitType.endsWith("[][]")»
+					«println('''generating expression with «varName» typed «varLitType»''')»
+					«IF listParams.contains(varName)»
+					__index = 0
+					for __i in range(__«varName»_rows):
+						for __j in range(__«varName»_cols):
+							__«varName»_matrix['values'][__index] = «varName»[__i*__«varName»_cols+__j]
+							__index += 1
 					«ELSE»
-						«println("I don't know what to do with " + (exp.expression as VariableLiteral).variable.name)»
+						«println("I don't know what to do with " + varName)»
 					«ENDIF»
-					«exp.target.name».send_message(
-						MessageBody=json.dumps(__«(exp.expression as VariableLiteral).variable.name»_matrix)
-					)
+					«exp.target.name».send_message(MessageBody=json.dumps(__«varName»_matrix))
 				«ELSE»
-					«exp.target.name».send_message(
-						MessageBody=json.dumps(«generatePyArithmeticExpression(exp.expression, scope, local)»)
-					)
+					«exp.target.name».send_message(MessageBody=json.dumps(«generatePyArithmeticExpression(exp.expression, scope, local)»))
 				«ENDIF»
 			«ELSEIF env=="azure"»
 			__queue_service.put_message('«exp.target.name»-"${id}"', json.dumps(«generatePyArithmeticExpression(exp.expression, scope, local)»))
@@ -377,12 +393,16 @@ class FLYGeneratorPython extends AbstractGenerator {
 					var i = 0;
 					for (f : (exp.right as NameObjectDef).features) {
 						if (f.feature !== null) {
-							typeSystem.get(scope).put(exp.name + "." + f.feature,
-								valuateArithmeticExpression(f.value, scope, local))
+							typeSystem.get(scope).put(
+								exp.name + "." + f.feature,
+								valuateArithmeticExpression(f.value, scope, local)
+							)
 							s = s + ''' '«f.feature»' : «generatePyArithmeticExpression(f.value, scope, local)»'''
 						} else {
-							typeSystem.get(scope).put(exp.name + "[" + i + "]",
-								valuateArithmeticExpression(f.value, scope, local))
+							typeSystem.get(scope).put(
+								exp.name + "[" + i + "]",
+								valuateArithmeticExpression(f.value, scope, local)
+							)
 							s = s + ''' '«i»' :«generatePyArithmeticExpression(f.value, scope, local)»'''
 							i++
 						}
@@ -394,27 +414,31 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 				} else if (exp.right instanceof ArrayDefinition) {
 					val type = (exp.right as ArrayDefinition).type
+					val arrayIndexes = (exp.right as ArrayDefinition).indexes
 
-					if((exp.right as ArrayDefinition).indexes.length==1){
-						var len = (exp.right as ArrayDefinition).indexes.get(0).value
-						typeSystem.get(scope).put(exp.name, "Array_"+type)
+					if (arrayIndexes.length == 1) {
+						typeSystem.get(scope).put(exp.name, '''«type»[]''')
+						var len = arrayIndexes.get(0).value
+
 						s += '''
 						«exp.name» = [None] * «generatePyArithmeticExpression(len, scope, local)»
 						'''
-					}else if((exp.right as ArrayDefinition).indexes.length==2){
-						var row = (exp.right as ArrayDefinition).indexes.get(0).value
-						var col = (exp.right as ArrayDefinition).indexes.get(1).value
-						typeSystem.get(scope).put(exp.name, "Matrix_"+type+"_"+generatePyArithmeticExpression(col, scope, local))
+					} else if (arrayIndexes.length == 2) {
+						typeSystem.get(scope).put(exp.name, '''«type»[][]''')
+						var row = arrayIndexes.get(0).value
+						var col = arrayIndexes.get(1).value
+
 						s += '''
-						«exp.name» = [None] * («generatePyArithmeticExpression(row, scope, local)»* «generatePyArithmeticExpression(col, scope, local)»)
+						«exp.name» = [None] * («generatePyArithmeticExpression(row, scope, local)» * «generatePyArithmeticExpression(col, scope, local)»)
 						'''
-					}else if((exp.right as ArrayDefinition).indexes.length==3){
-						var row = (exp.right as ArrayDefinition).indexes.get(0).value
-						var col = (exp.right as ArrayDefinition).indexes.get(1).value
-						var dep = (exp.right as ArrayDefinition).indexes.get(2).value
-						typeSystem.get(scope).put(exp.name, "Matrix_"+type+"_"+generatePyArithmeticExpression(col, scope, local)+"_"+generatePyArithmeticExpression(dep, scope, local))
+					} else if (arrayIndexes.length == 3) {
+						typeSystem.get(scope).put(exp.name, '''«type»[][][]''')
+						var row = arrayIndexes.get(0).value
+						var col = arrayIndexes.get(1).value
+						var dep = arrayIndexes.get(2).value
+
 						s += '''
-						«exp.name» = [None] * «generatePyArithmeticExpression(row, scope, local)» * «generatePyArithmeticExpression(col, scope, local)» *«generatePyArithmeticExpression(dep, scope, local)»
+						«exp.name» = [None] * «generatePyArithmeticExpression(row, scope, local)» * «generatePyArithmeticExpression(col, scope, local)» * «generatePyArithmeticExpression(dep, scope, local)»
 						'''
 					}
 
@@ -426,7 +450,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 						case "dataframe": {
 							typeSystem.get(scope).put(exp.name, "Table")
 							var path = "";
-							if((exp.right as DeclarationObject).features.get(1).value_f!=null){
+							if((exp.right as DeclarationObject).features.get(1).value_f !== null){
 								path = (exp.right as DeclarationObject).features.get(1).value_f.name
 							}else{
 								path = (exp.right as DeclarationObject).features.get(1).value_s.replaceAll('"', '\'');
@@ -470,15 +494,27 @@ class FLYGeneratorPython extends AbstractGenerator {
 										decFeats.get(1).value_f.name
 									else
 										decFeats.get(1).value_s.replaceAll('"', '\'')
-								else // leave it as is for the moment
+								else if (sourceType == "file") // leave it as is for the moment
 									decFeats.get(1).value_f.name
 							val separator = decFeats.get(2).value_s
 							//var nodeClass = decFeats.get(3).value_s // we can discard node class in Python
-							var isDirected = if (decFeats.size > 4 && decFeats.get(4).value_s == "true")
+							var isDirected = if (
+								decFeats.size > 4 &&
+								(
+									decFeats.get(4).feature == "directed" ||
+									decFeats.size > 5 && decFeats.get(5).feature == "directed"
+								)
+							)
 									"True"
 								else
 									"False"
-							var isWeighted = if (decFeats.size > 5 && decFeats.get(5).value_s == "true")
+							var isWeighted = if (
+								decFeats.size > 4 &&
+								(
+									decFeats.get(4).feature == "weighted" ||
+									decFeats.size > 5 && decFeats.get(5).feature == "weighted"
+								)
+							)
 									"True"
 								else
 									"False"
@@ -488,17 +524,21 @@ class FLYGeneratorPython extends AbstractGenerator {
 							// 3rd param: imported graph is directed
 							// 4th param: imported graph is weighted
 							return '''
-								«IF sourceType == "file"»
-									«exp.name» = Graph.importGraph(«source», '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
-								«ELSEIF sourceType == "path"»
-									«IF this.isURL(source)»
-«««									if 'http' in '«source»':
-										graph_file = urllib.request.urlopen(urllib.request.Request('«source»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
-									«ELSE»
-«««									else:
-										graph_file = open('«source»','rw')
+								«IF sourceType != "create"»
+									«IF sourceType == "file"»
+										«exp.name» = Graph.importGraph(«source», '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
+									«ELSEIF sourceType == "path"»
+										«IF this.isURL(source)»
+«««										if 'http' in '«source»':
+											graph_file = urllib.request.urlopen(urllib.request.Request('«source»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
+										«ELSE»
+«««										else:
+											graph_file = open('«source»','rw')
+										«ENDIF»
+										«exp.name» = Graph.importGraph(graph_file, '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
 									«ENDIF»
-									«exp.name» = Graph.importGraph(graph_file, '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
+								«ELSE»
+									«exp.name» = Graph(is_directed=«isDirected», is_weighted=«isWeighted»)
 								«ENDIF»
 							'''
 						}
@@ -507,15 +547,22 @@ class FLYGeneratorPython extends AbstractGenerator {
 						}
 					}
 				} else {
-					typeSystem.get(scope).put(exp.name, valuateArithmeticExpression(exp.right as ArithmeticExpression,scope,local))
+					val aExp = exp.right as ArithmeticExpression
+					if (typeSystem.get(scope).get(exp.name) === null) {
+						typeSystem.get(scope).put(
+							exp.name,
+							valuateArithmeticExpression(aExp, scope, local)
+						)
+					} // how could it be otherwise?
+
 					s += '''
-						«exp.name» = «generatePyArithmeticExpression(exp.right as ArithmeticExpression, scope, local)»
+						«exp.name» = «generatePyArithmeticExpression(aExp, scope, local)»
 					'''
 				}
 			}
 		} else if (exp instanceof LocalFunctionCall) {
 			val fc = (exp as LocalFunctionCall)
-			val fd = (fc.target as FunctionDefinition)
+//			val fd = (fc.target as FunctionDefinition)
 			val inputs = (fc.input as LocalFunctionInput).inputs
 			//functionCalled.put(fd.name, fd)
 			s += '''«((exp as LocalFunctionCall).target).name»(«FOR par : inputs»«generatePyArithmeticExpression(par, scope, local)»«IF !par.equals(inputs.last)», «ENDIF»«ENDFOR»)'''
@@ -600,7 +647,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			if (w.equals(""))
 				tabs=tabs+1
 		}
-		var s=''''''
+//		var s = ''''''
 		var str = new StringBuilder();
 		for(var  i=1;i<code_lst_split.size-1;i++){
 			var line = code_lst_split.get(i)
@@ -623,7 +670,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 				if ((((assignment.value as CastExpression).target as ChannelReceive).target.environment.get(0).
 					right as DeclarationObject).features.get(0).value_s.equals("aws")) { // aws environment2
 					// And we are on AWS
-					//TODO controllare receive_message
+					// TODO check receive_message
 					if ((assignment.value as CastExpression).type.equals("Integer")) {
 						// And we are trying to read an integer
 						return '''
@@ -721,24 +768,55 @@ class FLYGeneratorPython extends AbstractGenerator {
 				'''
 			}
 			if (assignment.feature_obj instanceof IndexObject) {
-				if (typeSystem.get(scope).get((assignment.feature_obj as IndexObject).name.name).contains("Array")) {
+				// edited according to IndexObject refactoring
+				val indexObj = (assignment.feature_obj as IndexObject)
+				val assignmentName = indexObj.name.name
+				val indexObjIndexes = indexObj.indexes
+				val indexObjType = typeSystem.get(scope).get(assignmentName)
+//				println('''«assignmentName» is of type «indexObjType»''')
+				val indexObjNumDims = indexObjectNumDims(indexObjType)
+//				println('''with «indexObjNumDims» dimensions''')
+				if (indexObjNumDims == 1) { // it's an array
+					val pos = generatePyArithmeticExpression(indexObjIndexes.get(0).value, scope, local)
+
 					return '''
-					«(assignment.feature_obj as IndexObject).name.name»[«generatePyArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(0).value, scope, local)»] = «generatePyArithmeticExpression((assignment.value), scope, local)»
+					«assignmentName»[«pos»] = «generatePyArithmeticExpression((assignment.value), scope, local)»
 					'''
-				} else if (typeSystem.get(scope).get((assignment.feature_obj as IndexObject).name.name).contains("Matrix")) {
-					if ((assignment.feature_obj as IndexObject).indexes.length == 2) {
-						var i = generatePyArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(0).value ,scope, local);
-						var j = generatePyArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(1).value ,scope, local);
-
-						//var col = typeSystem.get(scope).get((assignment.feature_obj as IndexObject).name.name).split("_").get(2)
-
-						return '''
-							«(assignment.feature_obj as IndexObject).name.name»[«i»*__«(assignment.feature_obj as IndexObject).name.name»_cols+«j»] = «generatePyArithmeticExpression(assignment.value, scope, local)»
-						'''
+				} else if (indexObjNumDims == 2) { // it's a 2D matrix
+					val row = generatePyArithmeticExpression(indexObjIndexes.get(0).value, scope, local)
+					val col = generatePyArithmeticExpression(indexObjIndexes.get(1).value, scope, local)
+					val pos = if (listParams.contains(assignmentName)) { // it's a function parameter
+						'''«row»*__«assignmentName»_cols+«col»'''
+					} else { // it's a function variable
+						val cols = arraySystem.get(scope).get(assignmentName).get(1)
+						'''«row»*«cols»+«col»'''
 					}
+
+					return '''
+					«assignmentName»[«pos»] = «generatePyArithmeticExpression(assignment.value, scope, local)»
+					'''
+				} else if (indexObjNumDims == 3) { // it's a 3D matrix
+					val row = generatePyArithmeticExpression(indexObjIndexes.get(0).value, scope, local)
+					val col = generatePyArithmeticExpression(indexObjIndexes.get(1).value, scope, local)
+					val dep = generatePyArithmeticExpression(indexObjIndexes.get(2).value, scope, local)
+
+					// FIXME fix this return in order to access array as 3D matrix
+					// array-equivalent position is (rows * cols * dep) + (row * cols + col)
+					val pos = if (listParams.contains(assignmentName)) { // TODO test
+						'''__«assignmentName»_rows*«assignmentName»_cols*«dep»+«row»*__«assignmentName»_cols+«col»'''
+					} else {
+						val dimensions = arraySystem.get(scope).get(assignmentName)
+						val rows = dimensions.get(0)
+						val cols = dimensions.get(1)
+						'''«rows»*«cols»*«dep»+«row»*«cols»+«col»'''
+					}
+
+					return '''
+					«assignmentName»[«pos»] = «generatePyArithmeticExpression(assignment.value, scope, local)»
+					'''
 				} else {
 					return '''
-					«(assignment.feature_obj as IndexObject).name.name»[«generatePyArithmeticExpression((assignment.feature_obj as IndexObject).indexes.get(0).value, scope, local)»] = «generatePyArithmeticExpression(assignment.value, scope, local)»
+					«assignmentName»[«generatePyArithmeticExpression(indexObjIndexes.get(0).value, scope, local)»] = «generatePyArithmeticExpression(assignment.value, scope, local)»
 					'''
 				}
 			}
@@ -769,8 +847,19 @@ class FLYGeneratorPython extends AbstractGenerator {
 					'''
 				}
 			} else if (exp.object instanceof RangeLiteral) {
-				val lRange = (exp.object as RangeLiteral).value1
-				val rRange = (exp.object as RangeLiteral).value2
+				val rangeLit = exp.object as RangeLiteral
+//				println('''Range: «exp.object»''')
+				val lRange = if (rangeLit.value_l1 !== null) {
+					rangeLit.value_l1.name
+				} else {
+					rangeLit.value1
+				}
+				val rRange = if (rangeLit.value_l2 !== null) {
+					rangeLit.value_l2.name
+				} else {
+					rangeLit.value2
+				}
+//				println('''Ranging «(exp.index.indices.get(0) as VariableDeclaration).name» from «lRange» to «rRange»...''')
 				return '''
 					for «(exp.index.indices.get(0) as VariableDeclaration).name» in range(«lRange», «rRange»):
 						«generatePyForBodyExpression(exp.body, scope, local)»
@@ -828,13 +917,25 @@ class FLYGeneratorPython extends AbstractGenerator {
 					println("Looping over " + function)
 				}
 			}
-		}else if(exp.index.indices.length == 2){
-			if(typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).contains("Matrix")){
+		} else if (exp.index.indices.length == 2) {
+			val varName = (exp.object as VariableLiteral).variable.name
+			if (typeSystem.get(scope).get(varName).endsWith("[][]")) { // FIXME update with current matrix definition
 				var row = (exp.index.indices.get(0) as VariableDeclaration).name
 				var col = (exp.index.indices.get(1) as VariableDeclaration).name
+				val rowRange = if (listParams.contains(varName)) {
+					'''__«varName»_rows'''
+				} else {
+					'''''' // TODO calculate range according to element being variable
+				}
+				val colRange = if (listParams.contains(varName)) {
+					'''__«varName»_cols'''
+				} else {
+					'''''' // TODO as above
+				}
+
 				return '''
-				for «row» in range(__«(exp.object as VariableLiteral).variable.name»_rows):
-					for «col» in range(__«(exp.object as VariableLiteral).variable.name»_cols):
+				for «row» in range(«rowRange»):
+					for «col» in range(«colRange»):
 						«generatePyForBodyExpression(exp.body, scope, local)»
 				'''
 			}
@@ -855,22 +956,23 @@ class FLYGeneratorPython extends AbstractGenerator {
 		'''
 		«FOR exp : block.expressions»
 «««			«println("expression in block: " + exp)»
-			«generatePyExpression(exp,scope, local)»
+			«generatePyExpression(exp, scope, local)»
 		«ENDFOR»
 		'''
 	}
 
-	def generatePyArithmeticExpression(ArithmeticExpression exp, String scope, boolean local) {
+	def String generatePyArithmeticExpression(ArithmeticExpression exp, String scope, boolean local) {
 		if (exp instanceof BinaryOperation) {
 			if (exp.feature.equals("and"))
 				return '''«generatePyArithmeticExpression(exp.left, scope, local)» and «generatePyArithmeticExpression(exp.right, scope, local)»'''
 			else if (exp.feature.equals("or"))
 				return '''«generatePyArithmeticExpression(exp.left, scope, local)» or «generatePyArithmeticExpression(exp.right, scope, local)»'''
 			else if (exp.feature.equals("+")) {
-//				println("Exp left: " + exp.left + ", Exp right: " + exp.right)
-//				println("Exp left type: " + valuateArithmeticExpression(exp.left, scope, local))
-//				println("Exp right type: " + valuateArithmeticExpression(exp.right, scope, local))
-//				println("type system: " + typeSystem)
+//				println('''Exp: «exp.feature»''')
+//				println('''Exp left: «exp.left», Exp right: «exp.right»''')
+//				println('''Exp left type: «valuateArithmeticExpression(exp.left, scope, local)»''')
+//				println('''Exp right type: «valuateArithmeticExpression(exp.right, scope, local)»''')
+//				println('''type system: «typeSystem»''')
 				val leftTypeString = valuateArithmeticExpression(exp.left, scope, local).equals("String");
 				val rightTypeString = valuateArithmeticExpression(exp.right, scope, local).equals("String");
 				if ((leftTypeString && rightTypeString) || (!leftTypeString && !rightTypeString)) {
@@ -899,7 +1001,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			return '''«exp.value.toFirstUpper»'''
 		} else if (exp instanceof FloatLiteral) {
 			return '''«exp.value»'''
-		} else if(exp instanceof EnvironemtLiteral){
+		} else if(exp instanceof EnvironmentLiteral){
 			return '''__environment'''
 		}
 		if (exp instanceof StringLiteral) {
@@ -921,21 +1023,29 @@ class FLYGeneratorPython extends AbstractGenerator {
 			}else{
 				return '''«(exp.name as VariableDeclaration).name»['«exp.value»']'''
 			}
-		} else if (exp instanceof IndexObject) { //array
+		} else if (exp instanceof IndexObject) { // array
+			// TODO check for needed edits due to IndexObject elements refactoring
+			val indexObjVarDec = exp.name as VariableDeclaration
 			if (exp.indexes.length == 1) {
-				return '''«(exp.name as VariableDeclaration).name»[«generatePyArithmeticExpression(exp.indexes.get(0).value, scope, local)»]'''
-			} else if(exp.indexes.length == 2) { //matrix 2d
+				return '''«indexObjVarDec.name»[«generatePyArithmeticExpression(exp.indexes.get(0).value, scope, local)»]'''
+			} else if (exp.indexes.length == 2) { // matrix 2d
 //				println("Expression indexes: " + exp.indexes)
 //				println("Expression: " + exp)
-				var i = generatePyArithmeticExpression(exp.indexes.get(0).value ,scope, local);
-				var j = generatePyArithmeticExpression(exp.indexes.get(1).value ,scope, local);
+				val row = generatePyArithmeticExpression(exp.indexes.get(0).value ,scope, local);
+				val col = generatePyArithmeticExpression(exp.indexes.get(1).value ,scope, local);
+				val pos = if (listParams.contains(indexObjVarDec.name)) {
+					'''«row»*__«indexObjVarDec.name»_cols+«col»'''
+				} else {
+					val cols = arraySystem.get(scope).get(indexObjVarDec.name).get(1)
+					'''«row»*«cols»+«col»'''
+				}
 
-				var col = typeSystem.get(scope).get((exp.name as VariableDeclaration).name).split("_").get(2)
 				return '''
-					«(exp.name as VariableDeclaration).name»[(«i»*__«(exp.name as VariableDeclaration).name»_cols)+«j»]['value']
+					«(exp.name as VariableDeclaration).name»[«pos»]
 				'''
 			} else { // matrix 3d
-				
+				// TODO calculate 3D matrix position in list according
+				// to (rows x cols + dep) + (row x cols + col) formula
 			}
 		} else if (exp instanceof CastExpression) {
 			return '''«generatePyCast(exp, scope, local)»'''
@@ -1046,10 +1156,17 @@ class FLYGeneratorPython extends AbstractGenerator {
 		} else if (exp instanceof NameObject) {
 			return typeSystem.get(scope).get(exp.name.name + "." + exp.value)
 		} else if (exp instanceof IndexObject) {
-//			println(scope + " type system " + typeSystem.get(scope))
-//			println("Expression name name: " + exp.name.name)
-			if (typeSystem.get(scope).get(exp.name.name).contains("Array") || typeSystem.get(scope).get(exp.name.name).contains("Matrix") ) {
-				return typeSystem.get(scope).get(exp.name.name).split("_").get(1);
+			// edited according to IndexObject refactoring
+			val indexObjType = typeSystem.get(scope).get(exp.name.name)
+//			println('''[Py] «scope» type system: «typeSystem.get(scope)»''')
+//			print('''[Py] «exp.name.name» type is ''')
+			val indexType = indexObjType.split('\\[\\]').get(0)
+			print('''«indexType» and is a ''')
+			val indexObjNumDims = indexObjectNumDims(indexObjType)
+			println('''«indexObjNumDims»-dimension array''')
+//			println('''[Py] «exp.name.name» type is «indexType» and has «arrayNumDims» dimensions''')
+			if (indexObjNumDims >= 1 && indexObjNumDims <= 3) { // it's an array or a matrix
+				return indexType
 			} else {
 				return typeSystem.get(scope).get(exp.name.name + "[" + generatePyArithmeticExpression(exp.indexes.get(0).value, scope, local) + "]");
 			}
@@ -1147,10 +1264,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	def CharSequence compileScriptDeploy(Resource resource, String name, boolean local){
 		switch this.env {
-		   case "aws": AWSDeploy(resource,name,local,false)
-		   case "aws-debug": AWSDebugDeploy(resource,name,local,true)
-		   case "azure": AzureDeploy(resource,name,local)
-		   default: this.env+" not supported"
+			case "aws": AWSDeploy(resource, name, local, false)
+			case "aws-debug": AWSDebugDeploy(resource, name, local, true)
+			case "azure": AzureDeploy(resource, name, local)
+			default: this.env + " not supported"
 		}
 	}
 
@@ -1346,7 +1463,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	echo "installing FLY graph"
 	rm -rf fly*
-	wget -q https://files.pythonhosted.org/packages/dd/f9/fe96bdc5641410d19c635cf6de80fb0ea0bafb4860d1317d53dca4488a7a/fly_graph-1.1.0.dev4-py3-none-any.whl -O fly_graph.whl
+	wget -q https://files.pythonhosted.org/packages/cc/8c/bdc3e1a9910d969679e47f2b6d9daddb4bfd152df9703e2c0aad5be68ced/fly_graph-1.1.0-py3-none-any.whl -O fly_graph.whl
 	unzip -q -d . fly_graph.whl fly/*
 	rm fly_graph.whl
 	echo "FLY graph installed"
@@ -1639,4 +1756,22 @@ class FLYGeneratorPython extends AbstractGenerator {
 		return false
 	}
 
+	private def indexObjectNumDims(String type) { // FIXME remove
+		// check whether positions are positive
+		val firstOcc = type.indexOf("[]")
+		val lastOcc = type.lastIndexOf("[]")
+		if (firstOcc < 0 || lastOcc < 0) {
+			throw new IllegalArgumentException(
+				'''«type» is not a valid type!'''
+			)
+		}
+
+		val numDims = lastOcc - firstOcc
+//		println('''Dimensions calculation for «type» is «numDims»''')
+		switch numDims {
+			case 0: 1
+			case 2: 2
+			case 4: 3
+		}
+	}
 }

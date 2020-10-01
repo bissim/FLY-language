@@ -1,14 +1,17 @@
 package org.xtext.generator
 
-import org.eclipse.xtext.generator.AbstractGenerator
+import java.util.List
+import java.util.HashMap
+import java.util.HashSet
 import org.eclipse.emf.ecore.resource.Resource
+import org.eclipse.emf.common.util.EList
+import org.eclipse.emf.ecore.EObject
+import org.eclipse.xtext.generator.AbstractGenerator
 import org.eclipse.xtext.generator.IFileSystemAccess2
 import org.eclipse.xtext.generator.IGeneratorContext
 import org.xtext.fLY.FunctionDefinition
 import org.xtext.fLY.BlockExpression
 import org.xtext.fLY.Expression
-import java.util.List
-import java.util.HashMap
 import org.xtext.fLY.VariableDeclaration
 import org.xtext.fLY.ChannelSend
 import org.xtext.fLY.NameObjectDef
@@ -45,10 +48,6 @@ import org.xtext.fLY.ConstantDeclaration
 import org.xtext.fLY.LocalFunctionCall
 import org.xtext.fLY.ArrayInit
 import org.xtext.fLY.ArrayValue
-import org.eclipse.emf.common.util.EList
-import org.eclipse.xtend.lib.macro.declaration.Declaration
-import java.util.HashSet
-import org.eclipse.emf.ecore.EObject
 
 class FLYGeneratorJs extends AbstractGenerator {
 	
