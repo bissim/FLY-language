@@ -235,9 +235,10 @@ class FLYGenerator extends FLYAbstractGenerator {
 		public class «fileName» {
 
 			static HashMap<String, HashMap<String, Object>> __fly_environment = new HashMap<>();
-			static HashMap<String, HashMap<String,Integer>> __fly_async_invocation_id = new HashMap<>();
+			static HashMap<String, HashMap<String, Integer>> __fly_async_invocation_id = new HashMap<>();
 			static final String __environment = "smp";
 			static long __id_execution =  System.currentTimeMillis();
+			«var functionName = ""»
 			«FOR element: (resource.allContents.toIterable.filter(Expression))»
 				«IF element instanceof VariableDeclaration»
 					«IF element.right instanceof DeclarationObject &&
@@ -258,7 +259,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 
 			public static void main(String[] args) throws Exception {
 				«FOR element: (resource.allContents.toIterable.filter(Expression).filter(ConstantDeclaration))»
-					«initialiseConstant(element,"main")»
+					«initialiseConstant(element, "main")»
 				«ENDFOR»
 				«IF checkDeclaration(res, "aws-debug")»
 				Runtime.getRuntime().exec("chmod +x src-gen/docker-compose-script.sh");
@@ -302,25 +303,34 @@ class FLYGenerator extends FLYAbstractGenerator {
 					.filter[right instanceof DeclarationObject].filter[listEnvironment.contains((right as DeclarationObject).features.get(0).value_s)
 					&& ((right as DeclarationObject).features.get(0).value_s.equals("smp"))].get(0).name»").get("nthread"));
 				«ENDFOR»
-				«FOR element: resource.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
-				filter[((right as DeclarationObject).features.get(0).value_s.equals("azure"))]»
-					«element.name» = new AzureClient("«((element.right as DeclarationObject).features.get(1) as DeclarationFeature).value_s»",
-						"«((element.right as DeclarationObject).features.get(2) as DeclarationFeature).value_s»",
-						"«((element.right as DeclarationObject).features.get(3) as DeclarationFeature).value_s»",
-						"«((element.right as DeclarationObject).features.get(4) as DeclarationFeature).value_s»",
+				«FOR element: resource.allContents
+					.toIterable
+					.filter(VariableDeclaration)
+					.filter[right instanceof DeclarationObject]
+					.filter[((right as DeclarationObject).features.get(0).value_s.equals("azure"))]»
+					«element.name» = new AzureClient("«(element.right as DeclarationObject).features.get(1).value_s»",
+						"«(element.right as DeclarationObject).features.get(2).value_s»",
+						"«(element.right as DeclarationObject).features.get(3).value_s»",
+						"«(element.right as DeclarationObject).features.get(4).value_s»",
 						__id_execution + "",
-						"«((element.right as DeclarationObject).features.get(5) as DeclarationFeature).value_s»");
+						"«(element.right as DeclarationObject).features.get(5).value_s»");
 					«element.name».init();
 				«ENDFOR»
-				«IF resource.allContents.toIterable.filter(FlyFunctionCall)
-				.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")].length > 0»
+				«IF resource.allContents
+					.toIterable
+					.filter(FlyFunctionCall)
+					.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]
+					.length > 0»
 					ExecutorService __thread_pool_deploy_on_cloud = Executors.newFixedThreadPool((int) __fly_environment.get("«resource.allContents.toIterable.filter(VariableDeclaration)
 					.filter[right instanceof DeclarationObject].filter[listEnvironment.contains((right as DeclarationObject).features.get(0).value_s)
 					&& ((right as DeclarationObject).features.get(0).value_s.equals("smp"))].get(0).name»").get("nthread"));
 					ArrayList<Future<Object>> __termination_deploy_on_cloud = new ArrayList<>();
-					«FOR element: resource.allContents.toIterable.filter(FlyFunctionCall)
-					.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
+					«FOR element: resource.allContents
+						.toIterable
+						.filter(FlyFunctionCall)
+						.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
 						«deployFlyFunctionOnCloud(element)»
+						// deploy '«functionName = element.target.name»' function
 					«ENDFOR»
 					for (Future<Object> f: __termination_deploy_on_cloud) {
 						try {
@@ -331,10 +341,14 @@ class FLYGenerator extends FLYAbstractGenerator {
 							e.printStackTrace();
 						}
 					}
-					System.out.println("Deploy effettuato");
+					System.out.println("\nFunction «functionName»_" + __id_execution + " has been deployed!\n\n");
 				«ENDIF»
-				«FOR element: resource.allContents.toIterable.filter(VariableDeclaration).filter[onCloud].filter[right instanceof DeclarationObject].
-				filter[(right as DeclarationObject).features.get(0).value_s.equals("channel")]»
+				«FOR element: resource.allContents
+					.toIterable
+					.filter(VariableDeclaration)
+					.filter[onCloud]
+					.filter[right instanceof DeclarationObject]
+					.filter[(right as DeclarationObject).features.get(0).value_s.equals("channel")]»
 					«IF !(element.environment.get(0).right as DeclarationObject).features.get(0).equals("smp")»
 					«generateChannelDeclarationForCloud(element)»
 					«ELSEIF (element.environment.get(0).right as DeclarationObject).features.get(0).equals("smp") &&
@@ -342,17 +356,24 @@ class FLYGenerator extends FLYAbstractGenerator {
 						«generateChannelDeclarationForLanguage(element)»
 					«ENDIF»
 				«ENDFOR»
-				«FOR element: resource.allContents.toIterable.filter(FlyFunctionCall).filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
+				«FOR element: resource.allContents
+					.toIterable
+					.filter(FlyFunctionCall)
+					.filter[!(environment.right as DeclarationObject).features.get(0).value_s.equals("smp")]»
 						«generateTerminationQueue(element)»
 				«ENDFOR»
 
-				«FOR element : resource.allContents.toIterable.filter(Expression)»
+				«FOR element: resource.allContents
+					.toIterable
+					.filter(Expression)»
 					«IF checkBlock(element.eContainer) == false»
 						«generateExpression(element, "main", isLocal)»
 					«ENDIF»
 				«ENDFOR»
-				«FOR element: resource.allContents.toIterable.filter(FlyFunctionCall)
-				.filter[!(environment.right as DeclarationObject).features.get(0).equals("smp")]»
+				«FOR element: resource.allContents
+					.toIterable
+					.filter(FlyFunctionCall)
+					.filter[!(environment.right as DeclarationObject).features.get(0).equals("smp")]»
 					«undeployFlyFunctionOnCloud(element)»
 				«ENDFOR»
 				«FOR element: resource.allContents.toIterable.filter(VariableDeclaration).filter[right instanceof DeclarationObject].
@@ -363,7 +384,9 @@ class FLYGenerator extends FLYAbstractGenerator {
 				System.exit(0);
 			}
 
-			«FOR element: resource.allContents.toIterable.filter(FunctionDefinition)»
+			«FOR element: resource.allContents
+				.toIterable
+				.filter(FunctionDefinition)»
 				«IF !checkBlock(element.eContainer)»
 					«generateFunctionDefinition(element)»
 				«ENDIF»
