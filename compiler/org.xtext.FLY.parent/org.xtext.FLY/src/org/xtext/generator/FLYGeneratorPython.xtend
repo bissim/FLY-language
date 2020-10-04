@@ -1504,7 +1504,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	aws s3 cp ${id}_lambda.zip s3://${function}${id}bucket --grants read=uri=http://acs.amazonaws.com/groups/global/AllUsers --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
 	echo "file uploaded, creating function"
 	aws lambda create-function --function-name ${function}_${id} --code S3Bucket=""${function}""${id}"bucket",S3Key=""${id}"_lambda.zip" --handler ${function}.handler --runtime «language» --role ${role_arn//\"} --memory-size «memory» --timeout «timeout» --profile «profile»«IF debug» --endpoint-url=«endpoint»:4574«ENDIF»
-	echo "lambda function created"
+	echo "lambda function '${function}_${id}' created"
 
 
 	# clear
@@ -1519,13 +1519,14 @@ class FLYGeneratorPython extends AbstractGenerator {
 	'''«AWSDeploy(resource, name, local, debug)»'''
 
 	def CharSequence compileDockerCompose(Resource resource)'''
-	docker network create -d bridge --subnet 192.168.0.0/24 --gateway 192.168.0.1 mynet
+	docker network create -d bridge --subnet 192.168.0.0/24 --gateway 192.168.0.1 aws_debug
 	echo \
 	"version: '3.7'
 
 	services:
 	  localstack:
-	    image: localstack/localstack:0.9.6
+	    image: localstack/localstack:0.10.9
+	    container_name: aws_debug_«root.name»
 	    ports:
 	      - '4563-4599:4563-4599'
 	      - '\${PORT_WEB_UI-8080}:\${PORT_WEB_UI-8080}'
@@ -1541,9 +1542,10 @@ class FLYGeneratorPython extends AbstractGenerator {
 	      - HOSTNAME_EXTERNAL=192.168.0.1
 	      - LOCALSTACK_HOSTNAME=192.168.0.1
 	    volumes:
+	      - '\${TMPDIR:-/tmp/aws_debug_«root.name»}:/tmp/aws_debug_«root.name»'
 	      - '/var/run/docker.sock:/var/run/docker.sock'
-	    tmpfs:
-	      - /tmp/aws_debug
+	#    tmpfs:
+	#      - /tmp/aws_debug
 	" > docker-compose.yml
 
 	docker-compose up
@@ -1709,16 +1711,16 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«ENDFOR»
 	'''
 
-	def CharSequence AWSDebugUndeploy(Resource resource, String string, boolean local,boolean debug)'''
+	def CharSequence AWSDebugUndeploy(Resource resource, String string, boolean local, boolean debug)'''
 	#!/bin/bash
 
 	# stop and remove localstack container
 	docker-compose down
 
 	# free some space used by localstack containers
-	docker network rm mynet # mynet is created by docker-compose
+	docker network rm aws_debug # aws_debug is created by docker-compose
 	docker ps -a | awk '{ print $1,$2 }' | grep lambci/lambda:«language» | \
-		awk '{print $1 }' | xargs -I {} docker rm {}
+		awk '{ print $1 }' | xargs -I {} docker rm {}
 
 	echo "You may want to free additional space by running"
 	echo -e "\tsudo rm -rf /tmp/_MEI*"
