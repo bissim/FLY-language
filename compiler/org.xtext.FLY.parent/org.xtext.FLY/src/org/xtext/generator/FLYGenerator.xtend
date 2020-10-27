@@ -178,6 +178,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 		import com.amazonaws.AmazonClientException;
 		import com.amazonaws.auth.AWSStaticCredentialsProvider;
 		import com.amazonaws.auth.BasicAWSCredentials;
+		import com.amazonaws.auth.BasicSessionCredentials;
 		import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 		import com.amazonaws.services.identitymanagement.AmazonIdentityManagement;
 		import com.amazonaws.services.identitymanagement.AmazonIdentityManagementClientBuilder;
@@ -653,65 +654,56 @@ class FLYGenerator extends FLYAbstractGenerator {
 						'''
 					}
 
+					case "aws",
 					case "aws-debug": {
-						val access_id_key = decFeats.get(2).value_s
-						val secret_access_key = decFeats.get(3).value_s
-//						val region = decFeats.get(4).value_s
+						val accessKey = decFeats.get(2).value_s
+						val secretKey = decFeats.get(3).value_s
+						val region = decFeats.get(4).value_s
+						// determine whether token is a string
+						// or a previously-declared variable
+						val token = if (decFeats.get(9) !== null) {
+								val feat = decFeats.get(9)
+								if (feat.value_f !== null)
+									feat.value_f.name
+								else
+									'''"«feat.value_s»"'''
+							}
 
-						'''
+//						println('''Token is «token»''')
+						val credentials = if (token !== null && !token.isEmpty)
+								'''
+								static BasicSessionCredentials «dec.name» = new BasicSessionCredentials(
+										"«accessKey»",
+										"«secretKey»",
+										«token»
+								)'''
+							else
+								'''static BasicAWSCredentials «dec.name» = new BasicAWSCredentials("«accessKey»", "«secretKey»")'''
 
-							static BasicAWSCredentials «dec.name» = new BasicAWSCredentials("«access_id_key»", "«secret_access_key»");
-
-							static AmazonSQS __sqs_«dec.name»  = AmazonSQSClient.builder()
+						val buildChain = '''
 								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withEndpointConfiguration(new EndpointConfiguration("http://192.168.0.1:4576", "us-east-1"))
-								.build();
+								«IF decType == "aws"»
+									.withRegion("«region»")
+								«ELSEIF decType == "aws-debug"»
+									.withEndpointConfiguration(new EndpointConfiguration("http://192.168.0.1:4576", "us-east-1"))
+								«ENDIF»
+								.build()'''
+
+						// return environment declaration
+						'''
+							«credentials»;
+
+							static AmazonSQS __sqs_«dec.name» = AmazonSQSClient.builder()
+								«buildChain»;
 
 							static AmazonIdentityManagement __iam_«dec.name» = AmazonIdentityManagementClientBuilder.standard()
-								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withEndpointConfiguration(new EndpointConfiguration("http://192.168.0.1:4593", "us-east-1"))
-								.build();
+								«buildChain»;
 
 							static AWSLambda __lambda_«dec.name» = AWSLambdaClientBuilder.standard()
-								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withEndpointConfiguration(new EndpointConfiguration("http://192.168.0.1:4574", "us-east-1"))
-								.build();
+								«buildChain»;
 
 							static AmazonS3 __s3_«dec.name» = AmazonS3Client.builder()
-								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withEndpointConfiguration(new EndpointConfiguration("http://192.168.0.1:4572", "us-east-1"))
-								.withPathStyleAccessEnabled(true)
-								.build();
-						'''
-					}
-
-					case "aws": {
-						var access_id_key = decFeats.get(2).value_s
-						var secret_access_key = decFeats.get(3).value_s
-						var region = decFeats.get(4).value_s
-
-						'''
-							static BasicAWSCredentials «dec.name» = new BasicAWSCredentials("«access_id_key»", "«secret_access_key»");
-
-							static AmazonSQS __sqs_«dec.name»  = AmazonSQSClient.builder()
-								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withRegion("«region»")
-								.build();
-
-							static AmazonIdentityManagement __iam_«dec.name» = AmazonIdentityManagementClientBuilder.standard()
-								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withRegion("«region»")
-								.build();
-
-							static AWSLambda __lambda_«dec.name» = AWSLambdaClientBuilder.standard()
-								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withRegion("«region»")
-								.build();
-
-							static AmazonS3 __s3_«dec.name» = AmazonS3Client.builder()
-								.withCredentials(new AWSStaticCredentialsProvider(«dec.name»))
-								.withRegion("«region»")
-								.build();
+								«buildChain»;
 						'''
 					}
 
@@ -752,33 +744,43 @@ class FLYGenerator extends FLYAbstractGenerator {
 					case "file": { // TODO add support to directory
 						typeSystem.get(scope).put(dec.name, "File")
 
-						val path = if (decFeats.get(1).value_f !== null)
+						// determine whether 'path' argument
+						// is a string or a variable
+						var isVar = true;
+						var source = if (decFeats.get(1).value_f !== null)
 								decFeats.get(1).value_f.name.trim
-							else
+							else {
+								isVar = false // it's not a variable name
 								decFeats.get(1).value_s.trim
+							}
 
-						if (decFeats.get(1).value_f === null) {
-							val tmp = path.split("/")
-							val name = tmp.get(tmp.length - 1)
-							if (name.split(".").length != 2)
+						val pathIsURL = this.isURL(source)
+						var tempFile = ""
+						if (!isVar) {
+//							val tmp = source.split("/")
+//							println('''Filename should be «tmp.get(tmp.length - 1)»''')
+//							val filename = tmp.get(tmp.length - 1).split(".")
+							val filename = source.split("\\.")
+							if (filename.length != 2) {
+//								println('''«path» is a directory («filename.length» != 2)''')
 								typeSystem.get(scope).put(dec.name, "Directory")
+							}
+							tempFile = '''"«source.split("/").last»"'''
+							source = '''"«source»"'''
 						}
-
-						val pathIsURL = pyGen.isURL(path)
-						val tempFile = path.split("/").last
 
 						'''
 							«IF dec.onCloud»
 								«deployFileOnCloud(dec, idExecution)»
 							«ELSE»
 								«IF pathIsURL»
-									File «dec.name» = new File("«tempFile»");
+									File «dec.name» = new File(«tempFile»);
 									FileUtils.copyURLToFile(
-										new URL("«path»"),
+										new URL(«source»),
 										«dec.name»
 									);
 								«ELSE»
-									File «dec.name» = new File("«path»");
+									File «dec.name» = new File(«source»);
 								«ENDIF»
 							«ENDIF»
 						'''
@@ -790,13 +792,13 @@ class FLYGenerator extends FLYAbstractGenerator {
 
 						'''
 							Table «dec.name» = Table.read().csv(CsvReadOptions
-								.builder(«IF dec.onCloud && !isURL(path)» "https://s3.us-east-2.amazonaws.com/bucket-" + __id_execution + "/«path»" «ELSE»"«path»"«ENDIF»)
+								.builder(«IF dec.onCloud && !isURL(path)»"https://s3.us-east-2.amazonaws.com/bucket-" + __id_execution + "/«path»"«ELSE»"«path»"«ENDIF»)
 								.maxNumberOfColumns(5000)
 								.tableName("«dec.name»")
 								.separator('«(dec.right as DeclarationObject).features.get(2).value_s»')
 							);
 							«IF dec.onCloud»
-								«deployFileOnCloud(dec,idExecution)»
+								«deployFileOnCloud(dec, idExecution)»
 							«ENDIF»
 						'''
 					}
@@ -840,7 +842,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 						'''
 							«IF sourceType != "create"»
 								«IF sourceType == "path"»
-									«IF pyGen.isURL(source)»
+									«IF this.isURL(source)»
 										«val fileName = source.split("/").last»
 										File «dec.name»File = new File("«fileName»");
 										FileUtils.copyURLToFile(
@@ -1325,13 +1327,19 @@ class FLYGenerator extends FLYAbstractGenerator {
 		val decFileFeats = (dec.right as DeclarationObject).features
 		val env = (dec.environment.get(0).right as DeclarationObject).features.get(0).value_s
 		val decEnvName = dec.environment.get(0).name
+		// TODO determine whether source is string or variable
+		// in order to avoid code repetition
+//		val source = if (decFileFeats.get(1).value_f !== null)
+//				decFileFeats.get(1).value_f.name
+//			else
+//				decFileFeats.get(1).value_s.trim
 
 		if (decFileFeats.get(1).value_f !== null) {
 			var path = decFileFeats.get(1).value_f.name.trim
 			switch (env) {
 				case "aws":
 					'''
-						if (!__s3_«decEnvName».doesBucketExist("bucket-" + __id_execution)) {
+						if (!__s3_«decEnvName».doesBucketExistV2("bucket-" + __id_execution)) {
 							__s3_«decEnvName».createBucket("bucket-" + __id_execution);
 						}
 						ListObjectsV2Result __result__listObjects_«id» = __s3_«decEnvName».listObjectsV2("bucket-" + __id_execution);
@@ -1356,10 +1364,10 @@ class FLYGenerator extends FLYAbstractGenerator {
 
 				case "aws-debug":
 					'''
-						if (!__s3_«decEnvName».doesBucketExist("bucket-" + __id_execution)) {
+						if (!__s3_«decEnvName».doesBucketExistV2("bucket-" + __id_execution)) {
 							__s3_«decEnvName».createBucket("bucket-" + __id_execution);
 						}
-						ListObjectsV2Result __result__listObjects_«id» = __s3.listObjectsV2("bucket-" + __id_execution);
+						ListObjectsV2Result __result__listObjects_«id» = __s3_«decEnvName».listObjectsV2("bucket-" + __id_execution);
 						List<S3ObjectSummary> __result_objects_«id» = __result__listObjects_«id».getObjectSummaries();
 						Boolean __exists_«id» = false;
 						for (S3ObjectSummary os: __result_objects_«id») {
@@ -1375,7 +1383,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 									new File(«path»)
 							);
 							__putObjectRequest.setCannedAcl(CannedAccessControlList.PublicReadWrite);
-							__s3.putObject(__putObjectRequest);
+							__s3_«decEnvName».putObject(__putObjectRequest);
 						}
 					'''
 
@@ -1395,7 +1403,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 					.replaceAll("-", "_")
 					.replaceAll("\\.", "_")
 
-			val remoteFileDownload = if (pyGen.isURL(path)) { // make remote file local
+			val remoteFileDownload = if (this.isURL(path)) { // make remote file local
 				// prepend file download
 				'''
 				File «dec.name» = new File("«nameFileExt»");
@@ -2207,7 +2215,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 									}
 									return null;
 								«ELSE»
-									Object __ret = «call.target.name»(«IF call.target.parameters.length==1»__«callVarName»«ENDIF»);
+									Object __ret = «call.target.name»(«IF call.target.parameters.length == 1»__«callVarName»«ENDIF»);
 									«IF call.isIs_then»
 										«call.then.name»();
 									«ENDIF»
@@ -2229,16 +2237,17 @@ class FLYGenerator extends FLYAbstractGenerator {
 				typeSystem.get(scope).get(callVarName) !== null &&
 				typeSystem.get(scope).get(callVarName).equals("File")
 			) { // f_index is a File txt
+					val ts = System.currentTimeMillis
 					s += '''
 						final int __numThread = (Integer) __fly_environment.get("«call.environment.name»").get("nthread");
 						ArrayList<StringBuilder> __temp_«callVarName» = new ArrayList<>();
-						«IF (call.environment.right as DeclarationObject).features.length==3»
+						«IF (call.environment.right as DeclarationObject).features.length == 3»
 							final ServerSocket __server_«callVarName»_data = new ServerSocket(9091, 100);
 						«ENDIF»
 						int __temp_i_«callVarName» = 0;
-						Scanner __scanner_«callVarName» = new Scanner(«callVarName»);
-						while (__scanner_«callVarName».hasNextLine()) {
-							String __tmp_line = __scanner_«callVarName».nextLine();
+						Scanner __scanner_«callVarName»_«ts» = new Scanner(«callVarName»);
+						while (__scanner_«callVarName»_«ts».hasNextLine()) {
+							String __tmp_line = __scanner_«callVarName»_«ts».nextLine();
 							try {
 								__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append(__tmp_line);
 								__temp_«callVarName».get(__temp_i_«callVarName» % __numThread).append("\n");
@@ -2249,6 +2258,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 							}
 							__temp_i_«callVarName»++;
 						}
+						__scanner_«callVarName»_«ts».close();
 						for (int __i = 0; __i < __numThread; __i++) {
 							final int __index = __i;
 							«IF (call.environment.right as DeclarationObject).features.length == 3»
@@ -2261,10 +2271,10 @@ class FLYGenerator extends FLYAbstractGenerator {
 								public Object call() throws Exception {
 									«IF (call.environment.right as DeclarationObject).features.length == 3»
 										«IF (call.environment.right as DeclarationObject).features.get(2).value_s.contains("python")»
-											ProcessBuilder __processBuilder = new ProcessBuilder("python3",new File("src-gen/«call.target.name».py").getAbsolutePath()); //for the moment listen on 9090
+											ProcessBuilder __processBuilder = new ProcessBuilder("python3", new File("src-gen/«call.target.name».py").getAbsolutePath()); // for the moment listen on 9090
 											__processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
 										«ELSEIF (call.environment.right as DeclarationObject).features.get(2).value_s.contains("nodejs") »
-											ProcessBuilder __processBuilder = new ProcessBuilder("nodejs",new File("src-gen/«call.target.name».js").getAbsolutePath()); //for the moment listen on 9090
+											ProcessBuilder __processBuilder = new ProcessBuilder("nodejs", new File("src-gen/«call.target.name».js").getAbsolutePath()); // for the moment listen on 9090
 											__processBuilder.redirectError(ProcessBuilder.Redirect.INHERIT);
 										«ENDIF»
 										Process __p;
@@ -2343,7 +2353,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 						«callID»_return.add(__f);
 					}
 				'''
-			} else if(
+			} else if (
 				call.input.f_index instanceof VariableLiteral &&
 				typeSystem.get(scope).get(callVarName).contains("Matrix") // FIXME edit according to IndexObject refactoring
 			) {
@@ -2444,7 +2454,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 				'''
 			}
 		} else { // no 'in' keyword
-			println('''Running FLY function with no range...''')
+//			println('''Running FLY function with no range...''')
 			var par_id = 0
 			var par_1 = '''''' // parameter declaration
 			var par_2 = '''''' // passing parameter
@@ -3086,14 +3096,16 @@ class FLYGenerator extends FLYAbstractGenerator {
 			} else if (variableType.equals("File")) {
 				index.typeobject = 'var'
 				typeSystem.get(scope).put(indexName, variableName)
+				val ts = System.currentTimeMillis
+				val varID = '''«variableName»_«ts»'''
 
 				return '''
-					Scanner __scanner_«variableName» = new Scanner(«variableName»);
-					while (__scanner_«variableName».hasNextLine()) {
-						String «indexName» = __scanner_«variableName».nextLine();
+					Scanner __scanner_«varID» = new Scanner(«variableName»);
+					while (__scanner_«varID».hasNextLine()) {
+						String «indexName» = __scanner_«varID».nextLine();
 						«generateForBodyExpression(body, scope, isLocal)»
 					}
-					__scanner_«variableName».close();
+					__scanner_«varID».close();
 				'''
 			} else if (variableType.equals("Directory")) { // TODO add support directory
 				return '''
@@ -3161,11 +3173,12 @@ class FLYGenerator extends FLYAbstractGenerator {
 				val feature = function.feature
 				val indexVarName = indexName
 //				val indexVarType = (indexes.indices.get(0) as VariableDeclaration).typeobject
-				var indexJType = ""
+				val methodType = this.graphMethodsReturnTypes.get(feature)
+				var indexJType = methodType.replace("[]", "")
 //				println("Loop variable '" + indexVarName + "' of type " + indexVarType)
 //				print("Iterating over '" + function.target.name + "." + feature + "()' " + targetType + " invocation")
 				if ( // methods return Object[]
-					this.graphMethodsReturnTypes.get(feature).equals("Object[]")
+					methodType.equals("Object[]")
 				) {
 //					print(" returning 'Object[]'")
 					if (
@@ -3186,7 +3199,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 						'''
 					} else {
 //						println("...")
-						indexJType = "Object"
+//						indexJType = "Object"
 						typeSystem.get(scope).put(indexVarName, indexJType)
 
 						return '''
@@ -3195,10 +3208,10 @@ class FLYGenerator extends FLYAbstractGenerator {
 						'''
 					}
 				} else if ( // methods returning Graph[]
-					this.graphMethodsReturnTypes.get(feature).equals("Graph[]")
+					methodType.equals("Graph[]")
 				) {
 //					println(" returning 'Graph[]'...")
-					indexJType = "Graph"
+//					indexJType = "Graph"
 					typeSystem.get(scope).put(indexVarName, indexJType)
 
 					return '''
@@ -3254,7 +3267,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 				assignment.value instanceof CastExpression
 			) {
 				val castExp = assignment.value as CastExpression
-				println('''Casting «castExp.target» to «castExp.type»''')
+//				println('''Casting «castExp.target» to «castExp.type»''')
 				if (castExp.target instanceof ChannelReceive) {
 					val chanRecvTarget = (castExp.target as ChannelReceive).target
 					if (!(chanRecvTarget.environment.get(0).right as DeclarationObject).features.get(0).value_s.equals("smp")) { // aws environment
@@ -3291,7 +3304,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 						}
 					}
 				} else { // it's just a casted assignment
-					println('''This should be a casted assignment''')
+//					println('''This should be a casted assignment''')
 					return ''''''
 				}
 			} else if (assignment.value instanceof ChannelReceive) {
@@ -3617,7 +3630,7 @@ class FLYGenerator extends FLYAbstractGenerator {
 							if ((variable.right as DeclarationObject).features.get(1).value_s !== null) {
 								var path = (variable.right as DeclarationObject).features.get(1).value_s.split("/")
 								var filename = path.get(path.length - 1)
-								if (filename.split(".").length != 2)
+								if (filename.split("\\.").length != 2)
 									return "String[]"
 								else
 									return "File"
@@ -3655,8 +3668,8 @@ class FLYGenerator extends FLYAbstractGenerator {
 			} else {
 				println('''«variable.name» hasn't been properly FLY-typed! ''')
 			}
-			print('''Cannot pick type for «variable.name», ''')
-			println("returning 'Object'...")
+//			print('''Cannot pick type for «variable.name», ''')
+//			println("returning 'Object'...")
 
 			return "Object"
 		} else if (exp instanceof NameObject) {
