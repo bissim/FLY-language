@@ -285,7 +285,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«IF env.equals("aws")»
 			sqs = boto3.resource('sqs')
 			«ELSE»
-			sqs = boto3.resource('sqs',endpoint_url='http://192.168.0.1:4576')
+			sqs = boto3.resource('sqs', endpoint_url='http://192.168.0.1:4576')
 			«ENDIF»
 
 			«FOR chName: channelNames»
@@ -298,7 +298,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 			«ENDIF»
 
 			«IF env.contains("aws") »
-			def handler(event,context):
+			def handler(event, context):
 				__environment = 'aws'
 				id_func = event['id']
 				data = event['data']
@@ -311,37 +311,37 @@ class FLYGeneratorPython extends AbstractGenerator {
 				id_func = __event['id']
 				data = __event['data']
 			«ENDIF»
-			«FOR exp: parameters»
-				«val varName = (exp as VariableDeclaration).name»
-				«val varType = typeSystem.get(name).get(varName)»
-				«IF varType.equals("Table")»
-					__columns = data[0].keys()
-					«varName» = pd.read_json(json.dumps(data))
-					«varName» = «varName»[__columns]
-				«ELSEIF varType.endsWith("[][]")»
-					__«varName»_matrix = data[0]
-					__«varName»_rows = data[0]['rows']
-					__«varName»_cols = data[0]['cols']
-					__«varName»_values = data[0]['values']
-					__index = 0
-					«varName» = [None] * (__«varName»_rows * __«varName»_cols)
-					for __i in range(__«varName»_rows):
-						for __j in range(__«varName»_cols):
-							«varName»[__i*__«varName»_cols+__j] = __«varName»_values[__index]
-							__index += 1
-				«ELSE»
-					«varName» = data # TODO check
+				«FOR exp: parameters»
+					«val varName = (exp as VariableDeclaration).name»
+					«val varType = typeSystem.get(name).get(varName)»
+					«IF varType.equals("Table")»
+						__columns = data[0].keys()
+						«varName» = pd.read_json(json.dumps(data))
+						«varName» = «varName»[__columns]
+					«ELSEIF varType.endsWith("[][]")»
+						__«varName»_matrix = data[0]
+						__«varName»_rows = data[0]['rows']
+						__«varName»_cols = data[0]['cols']
+						__«varName»_values = data[0]['values']
+						__index = 0
+						«varName» = [None] * (__«varName»_rows * __«varName»_cols)
+						for __i in range(__«varName»_rows):
+							for __j in range(__«varName»_cols):
+								«varName»[__i*__«varName»_cols+__j] = __«varName»_values[__index]
+								__index += 1
+					«ELSE»
+						«varName» = data # TODO check
+					«ENDIF»
+				«ENDFOR»
+				«FOR exp: exps.expressions»
+					«generatePyExpression(exp,name, local)»
+				«ENDFOR»
+				«IF env.contains("aws")»
+					__syncTermination = sqs.get_queue_by_name(QueueName='termination-"${function}"-"${id}"-'+str(id_func))
+					__syncTermination.send_message(MessageBody=json.dumps('terminate'))
+				«ELSEIF env == "azure"»
+					__queue_service.put_message('termination-"${function}"-"${id}"-'+str(id_func), 'terminate')
 				«ENDIF»
-			«ENDFOR»
-			«FOR exp: exps.expressions»
-				«generatePyExpression(exp,name, local)»
-			«ENDFOR»
-			«IF env.contains("aws") »
-				__syncTermination = sqs.get_queue_by_name(QueueName='termination-"${function}"-"${id}"-'+str(id_func))
-				__syncTermination.send_message(MessageBody=json.dumps('terminate'))
-			«ELSEIF env == "azure"»
-				__queue_service.put_message('termination-"${function}"-"${id}"-'+str(id_func), 'terminate')
-			«ENDIF»
 		'''
 	}
 
@@ -442,8 +442,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 						'''
 					}
 
-				}
-				else if(exp.right instanceof DeclarationObject){
+				} else if (exp.right instanceof DeclarationObject) {
 					var type = (exp.right as DeclarationObject).features.get(0).value_s
 
 					switch (type) {
@@ -458,30 +457,31 @@ class FLYGeneratorPython extends AbstractGenerator {
 							//var fileType = (exp.right as DeclarationObject).features.get(2).value_s
 							var sep = (exp.right as DeclarationObject).features.get(2).value_s
 							//path = path.replaceAll('"', '');
-							var uri = '''«IF (exp as VariableDeclaration).onCloud && ! (path.contains("https://")) »«IF env == "aws"»https://s3.us-east-2.amazonaws.com«ELSEIF env=="aws-debug"»http://192.168.0.1:4572«ELSEIF env=="azure"»https://"${storageName}".blob.core.windows.net«ENDIF»/bucket-"${id}"/«path»«ELSE»«path»«ENDIF»'''
+							var uri = '''«IF (exp as VariableDeclaration).onCloud && !this.isURL(path)»«IF env == "aws"»https://s3.us-east-2.amazonaws.com«ELSEIF env=="aws-debug"»http://192.168.0.1:4572«ELSEIF env=="azure"»https://"${storageName}".blob.core.windows.net«ENDIF»/bucket-"${id}"/«path»«ELSE»«path»«ENDIF»'''
 
 							s += '''
 								«exp.name» = pd.read_csv('«uri»', sep='«sep»')
 							'''
 						}
-						case "file":{
+						case "file": {
 							typeSystem.get(scope).put(exp.name, "File")
 
 							val decFeats = (exp.right as DeclarationObject).features
-							val path = if (decFeats.get(1).value_f !== null)
-								decFeats.get(1).value_f.name.trim
-							else
-								decFeats.get(1).value_s.replaceAll('"', '\'').trim
-							val pathIsURL = this.isURL(path)
-//							println(path + " is URL: " + pathIsURL)
+							val source = if (decFeats.get(1).value_f !== null) {
+									decFeats.get(1).value_f.name
+								} else {
+									"'" + decFeats.get(1).value_s.replaceAll('"', '\'').trim + "'"
+								}
+//							println('''Source is "«source»"''')
+
 							return '''
-								«IF pathIsURL»
-«««								if 'http' in «path»:
-									«exp.name» = urllib.request.urlopen(urllib.request.Request('«path»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
-«««								else:
-								«ELSE»
-									«exp.name» = open('«path»', 'rw')
-								«ENDIF»
+«««								«IF pathIsURL»
+								if 'http' in «source»:
+									«exp.name» = urllib.request.urlopen(urllib.request.Request(«source», headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
+								else:
+«««								«ELSE»
+									«exp.name» = open(«source», 'rw')
+«««								«ENDIF»
 							'''
 						}
 						case "graph": {
@@ -530,12 +530,12 @@ class FLYGeneratorPython extends AbstractGenerator {
 									«ELSEIF sourceType == "path"»
 										«IF this.isURL(source)»
 «««										if 'http' in '«source»':
-											graph_file = urllib.request.urlopen(urllib.request.Request('«source»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
+											__graph_file_«exp.name» = urllib.request.urlopen(urllib.request.Request('«source»',headers={'Content-Type':'application/x-www-form-urlencoded;charset=utf-8'}))
 										«ELSE»
 «««										else:
-											graph_file = open('«source»','rw')
+											__graph_file_«exp.name» = open('«source»','rw')
 										«ENDIF»
-										«exp.name» = Graph.importGraph(graph_file, '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
+										«exp.name» = Graph.importGraph(__graph_file_«exp.name», '«separator»'«IF isDirected == "True"», is_directed=«isDirected»«ENDIF»«IF isWeighted == "True"», is_weighted=«isWeighted»«ENDIF»)
 									«ENDIF»
 								«ELSE»
 									«exp.name» = Graph(is_directed=«isDirected», is_weighted=«isWeighted»)
@@ -831,7 +831,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	}
 
 	def generatePyForExpression(ForExpression exp, String scope, boolean local) {
-		if(exp.index.indices.length == 1){
+		if (exp.index.indices.length == 1) {
 			if (exp.object instanceof CastExpression) {
 				if ((exp.object as CastExpression).type.equals("Dat")) {
 					return '''
@@ -886,17 +886,17 @@ class FLYGeneratorPython extends AbstractGenerator {
 					for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name».itertuples(index=False):
 						«generatePyForBodyExpression(exp.body, scope, local)»
 					'''
-				} else if(typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("File") ){
-					return'''
+				} else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("File")) {
+					return '''
 					for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name»:
 						«generatePyForBodyExpression(exp.body, scope, local)»
 					'''
-				}else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("Directory") ){
+				} else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).equals("Directory")) {
 					return '''
 					for «(exp.index.indices.get(0) as VariableDeclaration).name» in os.listdir(«(exp.object as VariableLiteral).variable.name»):
 						«generatePyForBodyExpression(exp.body, scope, local)»
 					'''
-				} else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).contains("[]") ){
+				} else if (typeSystem.get(scope).get((exp.object as VariableLiteral).variable.name).contains("[]")) {
 					return'''
 					for «(exp.index.indices.get(0) as VariableDeclaration).name» in «(exp.object as VariableLiteral).variable.name»:
 						«generatePyForBodyExpression(exp.body, scope, local)»
@@ -1161,9 +1161,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 //			println('''[Py] «scope» type system: «typeSystem.get(scope)»''')
 //			print('''[Py] «exp.name.name» type is ''')
 			val indexType = indexObjType.split('\\[\\]').get(0)
-			print('''«indexType» and is a ''')
+//			print('''«indexType» and is a ''')
 			val indexObjNumDims = indexObjectNumDims(indexObjType)
-			println('''«indexObjNumDims»-dimension array''')
+//			println('''«indexObjNumDims»-dimension array''')
 //			println('''[Py] «exp.name.name» type is «indexType» and has «arrayNumDims» dimensions''')
 			if (indexObjNumDims >= 1 && indexObjNumDims <= 3) { // it's an array or a matrix
 				return indexType
@@ -1385,9 +1385,9 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	echo "role lambda-sqs-execution created at ARN "$role_arn
 
-	aws iam put-role-policy --role-name lambda-sqs-execution --policy-name lambda-sqs-policy --policy-document file://policyDocument.json --profile «profile»«IF debug» --endpoint-url=http://localhost:4593«ENDIF»
-	aws logs create-log-group --log-group-name «IF debug»dummy_«ENDIF»fly_logs --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
-	aws logs create-log-stream --log-group-name «IF debug»dummy_«ENDIF»fly_logs --log-stream-name dummy_fly_log_stream --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
+	aws iam put-role-policy --role-name lambda-sqs-execution --policy-name lambda-sqs-policy --policy-document file://policyDocument.json --profile «profile»«IF debug» --endpoint-url=«endpoint»:4593«ENDIF»
+	aws logs create-log-group --log-group-name ${function}_${id}_logs --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
+	aws logs create-log-stream --log-group-name ${function}_${id}_logs --log-stream-name ${function}_${id}_log_stream --profile «profile»«IF debug» --endpoint-url=«endpoint»:4586«ENDIF»
 
 
 	echo "Installing requirements"
@@ -1480,7 +1480,7 @@ class FLYGeneratorPython extends AbstractGenerator {
 	# generate Python function script
 	echo "«generateBodyPy(root.body, root.parameters, name, env, local)»
 
-	«FOR fd:functionCalled.values()»
+	«FOR fd: functionCalled.values()»
 
 	«generatePyExpression(fd, name, local)»
 
@@ -1499,11 +1499,11 @@ class FLYGeneratorPython extends AbstractGenerator {
 
 	echo "zip file too big, uploading it using s3"
 	echo "creating bucket for s3"
-	aws s3 mb s3://${function}${id}bucket --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
+	aws s3 mb s3://bucket-${id} --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
 	echo "s3 bucket created. uploading file"
-	aws s3 cp ${id}_lambda.zip s3://${function}${id}bucket --grants read=uri=http://acs.amazonaws.com/groups/global/AllUsers --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
+	aws s3 cp ${id}_lambda.zip s3://bucket-${id} --grants read=uri=http://acs.amazonaws.com/groups/global/AllUsers --profile «profile»«IF debug» --endpoint-url=«endpoint»:4572«ENDIF»
 	echo "file uploaded, creating function"
-	aws lambda create-function --function-name ${function}_${id} --code S3Bucket=""${function}""${id}"bucket",S3Key=""${id}"_lambda.zip" --handler ${function}.handler --runtime «language» --role ${role_arn//\"} --memory-size «memory» --timeout «timeout» --profile «profile»«IF debug» --endpoint-url=«endpoint»:4574«ENDIF»
+	aws lambda create-function --function-name ${function}_${id} --code S3Bucket="bucket-"${id},S3Key=""${id}"_lambda.zip" --handler ${function}.handler --runtime «language» --role ${role_arn//\"} --memory-size «memory» --timeout «timeout» --profile «profile»«IF debug» --endpoint-url=«endpoint»:4574«ENDIF»
 	echo "lambda function '${function}_${id}' created"
 
 
